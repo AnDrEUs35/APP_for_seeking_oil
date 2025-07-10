@@ -5,4 +5,3 @@ for N in range(999, 99, -1):
         s.append(N_list[i] + N_list[i+1])
     if str(max(s)) + str(min(s)) == "1412":
         print(N)
-

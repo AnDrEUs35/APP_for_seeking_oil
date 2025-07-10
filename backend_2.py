@@ -1,4 +1,4 @@
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageDraw
 import numpy as np
 import os
 import shutil
@@ -57,7 +57,7 @@ class ImageMarkup:
                 self.__crop_image(mask_dir, mask)
                 self.__crop_image(img_dir, img)
 
-    def __move_excess(self, saved_images, saved_masks, moved_images, moved_masks):
+    def move_excess(self, saved_images, saved_masks, moved_images, moved_masks):
         for dir_number in range(0, 120, 30):
             images_dir = f'{saved_images}/dir_{dir_number}'
             masks_dir = f'{saved_masks}/dir_{dir_number}'
@@ -94,20 +94,25 @@ class ImageChanger:
 
 
     def geotiff_to_tiff(self, input_path, output_path):
-        os.makedirs(output_path, exist_ok=True)
         for image in os.listdir(input_path):
             with rasterio.open(os.path.join(input_path, image)) as img:
                 img_array = img.read()
                 bands, h, w = img_array.shape 
-                if bands < 2:
-                    raise ValueError(f"Недостаточно каналов: {bands}")
-
-                r = img_array[0].astype('uint8')
-                g = img_array[1].astype('uint8')
-                b = np.zeros((h, w), dtype='uint8')
-                rgb = np.stack([r, g, b], axis=-1)
-                img_out = Image.fromarray(rgb, mode='RGB')
-                img_out.save(os.path.join(output_path, image), 'TIFF')
+                if bands == 2:
+                    r = img_array[0].astype('uint8')
+                    g = img_array[1].astype('uint8')
+                    b = np.zeros((h, w), dtype='uint8')
+                    rgb = np.stack([r, g, b], axis=-1)
+                    img_out = Image.fromarray(rgb, mode='RGB')
+                elif bands == 1:
+                    img_array = img.read(1)
+                    img_array = np.nan_to_num(img_array)
+                    arr_min, arr_max = np.min(img_array), np.max(img_array)
+                    norm = ((img_array - arr_min) / (arr_max - arr_min + 1e-6)) * 255
+                    norm = norm.astype(np.uint8)
+                    img_out = Image.fromarray(norm, 'L')
+                
+                img_out.save(os.path.join(output_path, f'converted_{image}'), 'TIFF')
 
 
     def sum_channels(self, input_path, output_path, band1, band2):
@@ -123,8 +128,8 @@ class ImageChanger:
             elif band2 in file:
                 NIR_image = os.path.join(input_path, file)
 
-        if green_image is None or NIR_image is None:
-            raise FileNotFoundError("Не найдены файлы с каналами B3 и B5")
+        if green_image == None or NIR_image == None:
+            raise FileNotFoundError("Не найдены файлы с выбранными каналами")
 
         with Image.open(green_image) as green, Image.open(NIR_image) as nir:
             green_arr = np.array(green, dtype='float32')
@@ -135,9 +140,37 @@ class ImageChanger:
             img = Image.fromarray(norm_index, mode='L')
             img.save(os.path.join(output_path, 'sum_result.tif'))
 
+    def create_mask_from_contours(self, image_width: int, image_height: int, contours: list[list[tuple]]):
+        """
+        Создает бинарную маску из списка контуров.
+        
+        Args:
+            image_width (int): Ширина исходного изображения.
+            image_height (int): Высота исходного изображения.
+            contours (list[list[tuple]]): Список контуров, где каждый контур - это список
+                                          кортежей (x, y) в координатах исходного изображения.
+                                          Предполагается, что контуры являются замкнутыми полигонами.
+        
+        Returns:
+            PIL.Image.Image: Бинарное изображение-маска (режим 'L'), где контуры белые (255), фон черный (0).
+        """
+        mask_image = Image.new('L', (image_width, image_height), 255) # Создаем белое изображение
+        draw = ImageDraw.Draw(mask_image) # Отрисовка маски
+        
+        for contour in contours:
+            # Преобразуем список кортежей в плоский список координат для ImageDraw.polygon
+            for point in contour:
+                # point — это кортеж (x, y)
+                flat_contour = [coord for coord in point]
+            if len(flat_contour) >= 6: # Полигон требует как минимум 3 точки (6 координат)
+                draw.polygon(flat_contour, fill=0) # Заполняем чёрным цветом
+        
+        return mask_image
+
 if __name__ == '__main__':
     a = ImageMarkup('snaps', 'masks')
     # a.work('snaps', 'masks', 'files', 'cr_masks')
     # a.geotiff_to_tiff('unready_snaps', 'ready_snaps')
     # a.sum_channels('C:/Users/Admin/Desktop/LC09_L2SP_176029_20250524_20250525_02_T1', 'be')
     # a.find_edges('be', 'ready_snaps')
+    

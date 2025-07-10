@@ -2,20 +2,27 @@ import sys
 from PyQt6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPushButton, QVBoxLayout, QWidget,
                              QTreeView, QFileDialog, QInputDialog, QComboBox, QMessageBox)
 from PyQt6.QtCore import Qt, QPoint, QModelIndex, QRect
-from PyQt6.QtGui import QFileSystemModel, QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut
+from PyQt6.QtGui import QFileSystemModel, QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush
 
+import os # Импортируем модуль os для работы с файловой системой
+import shutil # Импортируем модуль shutil для операций с файлами и папками
 
-from backend_2 import *
+from backend_2 import ImageMarkup, ImageChanger # Явный импорт классов
+from PIL import Image # Импортируем Image из Pillow для работы с изображениями (для получения размеров)
+
 
 class PaintWidget(QWidget):
-    
-
+    """
+    Виджет для отображения изображений с возможностью
+    масштабирования (зума) и панорамирования (перемещения),
+    а также выделения контуров по точкам или свободным рисованием.
+    """
     def __init__(self):
         super().__init__()
         self.pixmap = QPixmap()
         self.scale_factor = 1.0  # Текущий масштаб изображения
         self.pan_start_position = QPoint() # Начальная точка для панорамирования
-        self.pixmap_offset = QPoint() # Смещение изображения относительно центра виджета
+        self.pixmap_offset = QPoint() # Смещение изображения относительно центра
         self.is_panning = False # Флаг, указывающий, происходит ли сейчас панорамирование
 
         # Для рисования контуров
@@ -28,13 +35,12 @@ class PaintWidget(QWidget):
         # Устанавливаем минимальный размер, чтобы виджет не был слишком маленьким
         self.setMinimumSize(600, 600)
 
-        QShortcut(QKeySequence("Ctrl+Z"), self, activated=self.remove_last_contour)
-
     def load_image(self, path):
-        if self.pixmap.load(path) == True:
+        """Загружает новое изображение и сбрасывает трансформации."""
+        if self.pixmap.load(path):
             # Сбрасываем масштаб и смещение при загрузке нового изображения
             self.scale_factor = 1.0
-            self.pixmap_offset = QPoint() # Центрируем изображение
+            self.pixmap_offset = QPoint()
             self.clear_contours() # Очищаем контуры при загрузке нового изображения
             self.update()  # Запрашиваем перерисовку виджета
             return True
@@ -43,13 +49,15 @@ class PaintWidget(QWidget):
             return False
 
     def set_drawing_enabled(self, enabled: bool):
+        """Включает или выключает режим рисования."""
         self.drawing_enabled = enabled
-        if enabled == False:
-            self.is_drawing = False # Останавливаем рисование, если режим рисования выключен
+        if not enabled:
+            self.is_drawing = False # Останавливаем рисование, если режим выключен
             self.current_contour = [] # Очищаем текущий контур при выключении режима
         self.update() # Обновляем виджет, чтобы отразить изменение режима
 
     def set_drawing_mode(self, mode: str):
+        """Устанавливает текущий режим рисования ('points' или 'freehand')."""
         if mode in ['points', 'freehand']:
             self.drawing_mode = mode
             self.is_drawing = False # Сбрасываем состояние рисования
@@ -59,6 +67,7 @@ class PaintWidget(QWidget):
             print(f"Неизвестный режим рисования: {mode}")
 
     def clear_contours(self):
+        """Очищает все нарисованные контуры."""
         self.current_contour = []
         self.all_contours = []
         self.update()
@@ -68,17 +77,17 @@ class PaintWidget(QWidget):
         Возвращает список всех нарисованных контуров, преобразованных в
         координаты исходного изображения.
         """
-        if self.pixmap.isNull() == True:
+        if self.pixmap.isNull():
             return []
 
         # Вычисляем размеры и положение изображения с учетом масштаба
-        target_width = int(self.pixmap.width() * self.scale_factor) # Отображаемые размеры изображения
+        target_width = int(self.pixmap.width() * self.scale_factor)
         target_height = int(self.pixmap.height() * self.scale_factor)
-        widget_center = self.rect().center() #
+        widget_center = self.rect().center()
         pixmap_top_left = widget_center - QPoint(target_width // 2, target_height // 2) + self.pixmap_offset
 
         transformed_contours = []
-        # Обрабатываем завершенные контуры, преобразуя их в один
+        # Обрабатываем завершенные контуры
         for contour in self.all_contours:
             transformed_single_contour = []
             for qpoint in contour:
@@ -90,44 +99,33 @@ class PaintWidget(QWidget):
         
         return transformed_contours
 
-
     def wheelEvent(self, event: QWheelEvent):
         """Обрабатывает событие прокрутки колеса мыши для масштабирования."""
         # Отключаем масштабирование во время рисования для предотвращения искажений
-        if self.drawing_enabled == True: # Масштабирование не работает, если режим рисования включен
+        if self.drawing_enabled: # Масштабирование не работает, если режим рисования включен
             return
 
         angle = event.angleDelta().y()
-        if angle > 0:
-            factor = 1.1 
-        else:
-            factor = 1 / 1.1
+        factor = 1.1 if angle > 0 else 1 / 1.1
         
         self.scale_factor *= factor
         self.update()  # Перерисовываем виджет с новым масштабом
-
-
-    def remove_last_contour(self):
-        if self.all_contours:
-            self.all_contours.pop()
-            self.update()
-        else:
-            QMessageBox.information(self, 'Удаление последнего контура', 'На изображении ещё нет контуров.')
-
 
     def mousePressEvent(self, event: QMouseEvent):
         """Обрабатывает нажатие кнопки мыши для начала панорамирования или добавления точки/завершения контура."""
         if self.drawing_enabled:
             if event.button() == Qt.MouseButton.LeftButton:
                 self.is_drawing = True # Указываем, что начали рисовать (добавлять точки)
-                if self.drawing_mode == 'points':
+                # Если это начало нового контура (current_contour пуст), инициализируем его текущей точкой
+                if not self.current_contour:
+                    self.current_contour = [event.pos()]
+                elif self.drawing_mode == 'points':
                     self.current_contour.append(event.pos()) # Добавляем точку к текущему контуру
-                elif self.drawing_mode == 'freehand':
-                    self.current_contour = [event.pos()] # Начинаем новый контур для свободного рисования
+                # В режиме freehand, при уже начатом контуре, ЛКМ продолжает рисование через mouseMoveEvent
                 self.update()
             elif event.button() == Qt.MouseButton.RightButton:
-                # Завершаем текущий контур по правому клику (актуально для режима 'points')
-                if self.drawing_mode == 'points' and self.is_drawing and len(self.current_contour) > 1:
+                # Завершаем текущий контур по правому клику (актуально для обоих режимов)
+                if self.is_drawing and len(self.current_contour) > 1:
                     # Замыкаем контур, добавляя первую точку в конец
                     self.current_contour.append(self.current_contour[0]) 
                     self.all_contours.append(list(self.current_contour)) # Добавляем копию списка
@@ -139,42 +137,54 @@ class PaintWidget(QWidget):
                 self.is_panning = True
                 self.pan_start_position = event.pos()
 
-
     def mouseMoveEvent(self, event: QMouseEvent):
-        if self.drawing_enabled and self.drawing_mode == 'freehand' and self.is_drawing == True:
-            self.current_contour.append(event.pos())
-            self.update()
+        """
+        Обрабатывает движение мыши. В режиме 'points' не добавляет точки.
+        В режиме 'freehand' добавляет точки при нажатой ЛКМ.
+        """
+        # Если режим рисования включен, и мы находимся в процессе рисования (is_drawing),
+        # и при этом левая кнопка мыши зажата (проверяем через кнопки состояния, так как mouseMoveEvent
+        # вызывается постоянно при движении мыши)
+        if self.drawing_enabled and self.is_drawing and (event.buttons() & Qt.MouseButton.LeftButton):
+             # В режиме freehand добавляем точки, а в режиме points не добавляем, т.к. там только по клику
+            if self.drawing_mode == 'freehand':
+                self.current_contour.append(event.pos())
+                self.update()
+            # В режиме points, если is_drawing=True, это означает, что мы только что сделали ЛКМ,
+            # и ждем ПКМ для завершения. mouseMoveEvent не должен добавлять точки.
         elif self.is_panning:
             delta = event.pos() - self.pan_start_position
             self.pixmap_offset += delta
             self.pan_start_position = event.pos()
             self.update()
 
-
     def mouseReleaseEvent(self, event: QMouseEvent):
-        if self.drawing_enabled and self.drawing_mode == 'freehand' and self.is_drawing:
-            if event.button() == Qt.MouseButton.LeftButton:
-                if len(self.current_contour) > 1:
-                    # Замыкаем контур, добавляя первую точку в конец
-                    self.current_contour.append(self.current_contour[0])
-                    self.all_contours.append(list(self.current_contour))
-                self.current_contour = []
-                self.is_drawing = False
-                self.update()
+        """
+        Обрабатывает отпускание кнопки мыши.
+        В режиме 'freehand' теперь не завершает контур, а только отключает is_drawing,
+        чтобы пользователь мог отпустить ЛКМ и продолжить рисовать, нажав её снова.
+        """
+        # В режиме рисования, если отпустили левую кнопку
+        if self.drawing_enabled and event.button() == Qt.MouseButton.LeftButton:
+            # Если мы были в процессе рисования (is_drawing), то отключаем его.
+            # Контур не замыкается и не сохраняется здесь.
+            self.is_drawing = False
+            self.update() # Обновляем, чтобы показать, что рисование временно приостановлено (если режим freehand)
         elif self.is_panning:
             if event.button() == Qt.MouseButton.LeftButton:
                 self.is_panning = False
 
-
     def paintEvent(self, event):
-        super().paintEvent(event) # ВЫзов родительского метода paintEvent Мы его переопределяем
+        """
+        Перерисовывает виджет, включая изображение и нарисованные контуры.
+        """
+        super().paintEvent(event)
         
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform) # Включает сглаживание при масштабировании изображений для лучшего качества.
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-        if self.pixmap.isNull() == False:  # Проверяем, есть ли изображение.
+        if not self.pixmap.isNull():
             # Вычисляем размеры и положение изображения с учетом масштаба
-            # Пока плохо понимаю
             target_width = int(self.pixmap.width() * self.scale_factor)
             target_height = int(self.pixmap.height() * self.scale_factor)
             widget_center = self.rect().center()
@@ -185,13 +195,13 @@ class PaintWidget(QWidget):
             painter.drawPixmap(target_rect, self.pixmap)
 
         # Настройка пера для рисования контуров
-        pen = QPen(QColor(255, 0, 0))
-        pen.setWidth(2)
-        painter.setPen(pen) # Красный цвет для обводки, толщина линии
+        pen = QPen(QColor(255, 0, 0)) # Красный цвет для обводки
+        pen.setWidth(2) # Толщина линии
+        painter.setPen(pen)
 
         # Настройка кисти для закрашивания контуров (полупрозрачный красный)
         brush = QBrush(QColor(255, 0, 0, 100)) # Красный с 100 alpha (полупрозрачный)
-        painter.setBrush(brush)  
+        painter.setBrush(brush)
 
         # Рисуем все завершенные контуры
         for contour in self.all_contours:
@@ -200,10 +210,9 @@ class PaintWidget(QWidget):
                 painter.drawPolygon(contour) 
 
         # Рисуем текущий (незавершенный) контур, если он рисуется
-        if self.is_drawing and len(self.current_contour) > 1:
-            # Для текущего контура также используем drawPolygon для закрашивания
+        # Теперь текущий контур рисуется, даже если ЛКМ отпущена (пока не было ПКМ)
+        if len(self.current_contour) > 1: # Рисуем, если есть хотя бы 2 точки
             painter.drawPolygon(self.current_contour)
-            # Дополнительно можно нарисовать точки, чтобы было видно, где пользователь кликнул (только для режима 'points')
             if self.drawing_mode == 'points':
                 # Отключаем кисть для рисования точек, чтобы они не были закрашены
                 painter.setBrush(Qt.BrushStyle.NoBrush) 
@@ -211,17 +220,6 @@ class PaintWidget(QWidget):
                     painter.drawEllipse(point, 3, 3) # Нарисовать маленький кружок вокруг каждой точки
                 # Возвращаем кисть для следующего рисования контуров
                 painter.setBrush(brush)
-
-
-
-
-
-
-
-
-
-
-
 
 
 class OilApp(QMainWindow):
@@ -255,7 +253,7 @@ class OilApp(QMainWindow):
         
         self.tree = QTreeView()
         self.tree.setModel(self.model)
-        self.tree.setFixedHeight(380)
+        self.tree.setFixedHeight(400)
         self.tree.clicked.connect(self.on_file_clicked)
         self.tree.hide() # Скрываем дерево, пока не выбрана папка
         # Скрываем лишние колонки (размер, тип, дата)
@@ -267,11 +265,11 @@ class OilApp(QMainWindow):
         self.clear_button = QPushButton('Удалить всё из директории')
         self.clear_button.clicked.connect(self.clear_directory)
 
-        self.geotiff_to_tiff_button = QPushButton('Преобразовать GeoTiff в Tiff')
-        self.geotiff_to_tiff_button.clicked.connect(self.geotiff_to_tiff)
-
         self.find_edges_button = QPushButton('Найти границы на изображении')
         self.find_edges_button.clicked.connect(self.find_edges)
+
+        self.geotiff_to_tiff_button = QPushButton('Преобразовать GeoTiff в Tiff')
+        self.geotiff_to_tiff_button.clicked.connect(self.geotiff_to_tiff)
 
         self.crop_label = QLabel('Подготовка данных для обучения модели')
 
@@ -296,7 +294,7 @@ class OilApp(QMainWindow):
         self.toggle_drawing_button = QPushButton('Включить/Выключить рисование')
         self.toggle_drawing_button.setCheckable(True) # Сделать кнопку переключаемой
         self.toggle_drawing_button.clicked.connect(self.toggle_drawing_mode)
-        
+
         self.clear_contours_button = QPushButton('Очистить контуры')
         self.clear_contours_button.clicked.connect(self.paint_widget.clear_contours)
 
@@ -318,9 +316,9 @@ class OilApp(QMainWindow):
         layV1.addWidget(self.dir_button)
         layV1.addWidget(self.tree)
         layV1.addWidget(self.instrument_label)
-        layV1.addWidget(self.geotiff_to_tiff_button)
         layV1.addWidget(self.clear_button)
         layV1.addWidget(self.find_edges_button)
+        layV1.addWidget(self.geotiff_to_tiff_button)
         layV1.addWidget(self.crop_label)
         layV1.addLayout(layH2)
         layV1.addWidget(self.sum_channels_button)
@@ -345,6 +343,7 @@ class OilApp(QMainWindow):
 
 
     def choose_directory(self):
+        """Открывает диалог выбора директории и устанавливает ее как корневую для дерева файлов."""
         self.dir_path = QFileDialog.getExistingDirectory(
             self, "Выберите директорию", "")
         if self.dir_path:
@@ -365,12 +364,12 @@ class OilApp(QMainWindow):
             QMessageBox.information(self, "Успех", "Преобразование GeoTiff в Tiff завершено.")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при преобразовании: {e}")
-            print(e)
 
 
     def find_edges(self):
+        """Находит границы на выбранном изображении и сохраняет результат."""
         index = self.tree.currentIndex()
-        if not index.isValid() or self.model.isDir(index) == True:
+        if not index.isValid() or self.model.isDir(index):
             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, выберите файл изображения.")
             return
         input_path = self.model.filePath(index)
@@ -387,6 +386,7 @@ class OilApp(QMainWindow):
 
     
     def sum_channels(self):
+        """Выполняет сложение (или аналогичную операцию) двух выбранных каналов изображения."""
         input_path = self.dir_path
         if not input_path:
             QMessageBox.warning(self, "Предупреждение", "Сначала выберите директорию с исходными изображениями.")
@@ -405,18 +405,20 @@ class OilApp(QMainWindow):
 
 
     def clear_directory(self):
+        """Полностью очищает выбранную директорию."""
         directory = QFileDialog.getExistingDirectory(self, 'Выбор директории, которую нужно полностью очистить')
         if not directory: return
         reply = QMessageBox.question(self, 'Подтверждение очистки',
                                      f"Вы уверены, что хотите полностью очистить директорию '{directory}'? Это действие необратимо.",
-                                     QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No)
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                     QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 for item in os.listdir(directory):
                     item_path = os.path.join(directory, item)
-                    if os.path.isfile(item_path) == True:
+                    if os.path.isfile(item_path):
                         os.remove(item_path)
-                    elif os.path.isdir(item_path) == True:
+                    elif os.path.isdir(item_path):
                         shutil.rmtree(item_path)
                 QMessageBox.information(self, "Успех", f"Директория '{directory}' успешно очищена.")
             except Exception as e:
@@ -424,8 +426,9 @@ class OilApp(QMainWindow):
 
 
     def on_file_clicked(self, index: QModelIndex):
+        """Загружает выбранный файл изображения в виджет для отображения."""
         file_path = self.model.filePath(index)
-        if self.model.isDir(index) == False: # Проверяем, что это файл, а не папка
+        if not self.model.isDir(index): # Проверяем, что это файл, а не папка
             if self.paint_widget.load_image(file_path):
                 self.current_image_path = file_path # Сохраняем путь к загруженному изображению
         else:
@@ -433,15 +436,13 @@ class OilApp(QMainWindow):
 
 
     def run_markup(self):
+        """Запускает процесс подготовки выборки изображений и масок."""
         snaps_path = QFileDialog.getExistingDirectory(self, "Выберите папку с изображениями")
-        if snaps_path == None:
-            return
+        if not snaps_path: return
         masks_path = QFileDialog.getExistingDirectory(self, "Выберите папку с масками")
-        if masks_path == None:
-            return
+        if not masks_path: return
         save_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для сохранения")
-        if save_dir == None:
-            return
+        if not save_dir: return
 
         self.markup = ImageMarkup(snaps_path, masks_path)
         try:
@@ -449,7 +450,6 @@ class OilApp(QMainWindow):
             QMessageBox.information(self, "Успех", "Подготовка выборки завершена.")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка при подготовке выборки: {str(e)}")
-
 
     def toggle_drawing_mode(self):
         """Переключает режим рисования в PaintWidget."""
@@ -460,9 +460,9 @@ class OilApp(QMainWindow):
         if is_checked:
             current_mode = self.paint_widget.drawing_mode
             if current_mode == 'points':
-                self.label.setText("Режим рисования включен: По точкам. ЛКМ для добавления точки, ПКМ для завершения контура.")
+                self.label.setText("Режим рисования включен: По точкам. ЛКМ для добавления точки. ПКМ для завершения контура.")
             else: # freehand
-                self.label.setText("Режим рисования включен: Свободное рисование. Удерживайте ЛКМ для рисования, отпустите для завершения контура.")
+                self.label.setText("Режим рисования включен: Свободное рисование. Удерживайте ЛКМ для рисования. Отпустите ЛКМ для паузы. ПКМ для завершения контура.")
         else:
             self.label.setText("Режим рисования выключен. Используйте колесо мыши для масштабирования, ЛКМ для панорамирования.")
 
@@ -472,22 +472,22 @@ class OilApp(QMainWindow):
             0: 'points',
             1: 'freehand'
         }
-        selected_mode = mode_map.get(index, 'points') # получаем выбранный пользователем режим
+        selected_mode = mode_map.get(index, 'points')
         self.paint_widget.set_drawing_mode(selected_mode)
         
         # Обновляем метку с инструкциями после смены режима
         if self.paint_widget.drawing_enabled:
             if selected_mode == 'points':
-                self.label.setText("Режим рисования включен: По точкам. ЛКМ для добавления точки, ПКМ для завершения контура.")
+                self.label.setText("Режим рисования включен: По точкам. ЛКМ для добавления точки. ПКМ для завершения контура.")
             else: # freehand
-                self.label.setText("Режим рисования включен: Свободное рисование. Удерживайте ЛКМ для рисования, отпустите для завершения контура.")
+                self.label.setText("Режим рисования включен: Свободное рисование. Удерживайте ЛКМ для рисования. Отпустите ЛКМ для паузы. ПКМ для завершения контура.")
         else:
-            self.label.setText("Режим рисования выключен. Используйте колесо мыши для масштабирования, ЛКМ для передвижения по изображению.")
+            self.label.setText("Режим рисования выключен. Используйте колесо мыши для масштабирования, ЛКМ для панорамирования.")
 
 
     def save_contours_as_mask(self):
         """Сохраняет нарисованные контуры как бинарную маску."""
-        if self.current_image_path == None:
+        if self.current_image_path is None:
             QMessageBox.warning(self, "Предупреждение", "Сначала загрузите изображение, чтобы сохранить маску.")
             return
 
@@ -500,12 +500,12 @@ class OilApp(QMainWindow):
             return
 
         contours = self.paint_widget.get_contours_in_image_coords()
-        if contours == []:
+        if not contours:
             QMessageBox.information(self, "Информация", "Нет нарисованных контуров для сохранения.")
             return
 
         save_path, _ = QFileDialog.getSaveFileName(self, "Сохранить маску контуров", "", "TIFF Files (*.tif);;PNG Files (*.png);;All Files (*)")
-        if save_path == None:
+        if not save_path:
             return
 
         try:
