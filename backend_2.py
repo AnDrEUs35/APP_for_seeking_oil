@@ -10,52 +10,40 @@ class ImageMarkup:
         self.images_path = images_path
         self.masks_path = masks_path
 
-    def __crop_image(self, save_directory, mask_or_img):
-        os.makedirs(f'{save_directory}/dir_{self.corner}', exist_ok=True)
+    def __crop_image(self, save_directory, img):
+        os.makedirs(save_directory, exist_ok=True)
         num = 0
-        for i in range(0, mask_or_img.width, 1024):
-            for j in range(0, mask_or_img.height, 1024):
-                cropped_img = mask_or_img.crop((i, j, i+1024, j+1024))
-                cropped_img.save(f'{save_directory}/dir_{self.corner}/cropped_img_{num}.tif')
+        for i in range(0, img.width, 1024):
+            for j in range(0, img.height, 1024):
+                cropped = img.crop((i, j, i + 1024, j + 1024))
+                cropped.save(os.path.join(save_directory, f'cropped_{num}.tif'))
                 num += 1
-
-
-    def __rotate_image(self, save_directory, mask_or_img):
-        os.makedirs(f'{save_directory}/dir_{self.corner}', exist_ok=True)
-        rotated = mask_or_img.rotate(self.corner, expand=True)
-        rotated.save(f"{save_directory}/dir_{self.corner}/rot{self.corner}_img.tif")
-
 
     def work(self, save_dir):
         saved_images = os.path.join(save_dir, 'cropped_images')
         saved_masks = os.path.join(save_dir, 'cropped_masks')
-        if os.path.exists(saved_images) == False:
-            os.makedirs(saved_images)
-        if os.path.exists(saved_masks) == False:
-            os.makedirs(saved_masks)
+        os.makedirs(saved_images, exist_ok=True)
+        os.makedirs(saved_masks, exist_ok=True)
 
         snaps_list = sorted(os.listdir(self.images_path))
         masks_list = sorted(os.listdir(self.masks_path))
         
         for snap, mask in zip(snaps_list, masks_list):
-            img_dir = os.path.join(saved_images, snap[:-4])
-            mask_dir = os.path.join(saved_masks, mask[:-4])
+            print(snap)
+            img_path = os.path.join(self.images_path, snap)
+            mask_path = os.path.join(self.masks_path, mask)
 
-            if os.path.exists(img_dir) == False:
-                os.makedirs(img_dir)
+            with Image.open(img_path) as img, Image.open(mask_path) as msk:
+                for angle in (0, 30, 60, 90):
+                    rotated_img = img.rotate(angle, expand=True)
+                    rotated_msk = msk.rotate(angle, expand=True)
 
-            if os.path.exists(mask_dir) == False:
-                os.makedirs(mask_dir)
-            
+                    img_dir = os.path.join(saved_images, snap[:-4], f'dir_{angle}')
+                    msk_dir = os.path.join(saved_masks, mask[:-4], f'dir_{angle}')
 
-            with Image.open(os.path.join(self.images_path, snap)) as img, Image.open(os.path.join(self.masks_path, mask)) as mask:
-                for self.corner in np.arange(0, 120, 30):
-                    self.__crop_image(img_dir, img)
-                    self.__rotate_image(img_dir, img)
-                    self.__crop_image(mask_dir, mask)
-                    self.__rotate_image(mask_dir, mask)
-                self.__crop_image(mask_dir, mask)
-                self.__crop_image(img_dir, img)
+                    self.__crop_image(img_dir, rotated_img)
+                    self.__crop_image(msk_dir, rotated_msk)
+
 
     def move_excess(self, saved_images, saved_masks, moved_images, moved_masks):
         for dir_number in range(0, 120, 30):
@@ -115,36 +103,34 @@ class ImageChanger:
                 img_out.save(os.path.join(output_path, f'converted_{image}'), 'TIFF')
 
 
-    def sum_channels(self, input_path, output_path, band1, band2):
-        os.makedirs(output_path, exist_ok=True)
-        green_image = None
-        NIR_image = None
-
-        for file in os.listdir(input_path):
-            if not file.lower().endswith('.tif'):
-                continue
-            if band1 in file:
-                green_image = os.path.join(input_path, file)
-            elif band2 in file:
-                NIR_image = os.path.join(input_path, file)
-
-        if green_image == None or NIR_image == None:
+    def sum_channels(self, output_path, *bands):
+        if len(bands) == 0:
             raise FileNotFoundError("Не найдены файлы с выбранными каналами")
+        eps = 1e-6
+        if len(bands) == 2:
+            with Image.open(bands[0]) as band1, Image.open(bands[1]) as band2:
+                band1_arr = np.array(band1, dtype='float32')
+                band2_arr = np.array(band2, dtype='float32')
+                sum_bands = (band1_arr - band2_arr) / (band1_arr + band2_arr + eps)
+        elif len(bands) == 4:
+            with Image.open(bands[0]) as band1, Image.open(bands[1]) as band2, Image.open(bands[2]) as band3, Image.open(bands[3]) as band4:
+                band1_arr = np.array(band1, dtype='float32')
+                band2_arr = np.array(band2, dtype='float32')
+                band3_arr = np.array(band3, dtype='float32')
+                band4_arr = np.array(band4, dtype='float32')
+                sum_bands = (band1_arr + band2_arr) / (band3_arr + band4_arr + eps)
+        else:
+            return 'Несоответствие количества файлов'
 
-        with Image.open(green_image) as green, Image.open(NIR_image) as nir:
-            green_arr = np.array(green, dtype='float32')
-            nir_arr = np.array(nir, dtype='float32')
-            eps = 1e-6
-            sum_bands = (green_arr - nir_arr) / (green_arr + nir_arr + eps)
-            norm_index = ((sum_bands + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
-            img = Image.fromarray(norm_index, mode='L')
-            img.save(os.path.join(output_path, 'sum_result.tif'))
+        norm_index = ((sum_bands + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
+        img = Image.fromarray(norm_index, mode='L')
+        img.save(os.path.join(output_path, 'sum_result.tif'))
 
     def create_mask_from_contours(self, image_width: int, image_height: int, contours: list[list[tuple]]):
         """
         Создает бинарную маску из списка контуров.
         
-        Args:
+        Аргументы:
             image_width (int): Ширина исходного изображения.
             image_height (int): Высота исходного изображения.
             contours (list[list[tuple]]): Список контуров, где каждый контур - это список

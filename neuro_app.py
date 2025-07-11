@@ -117,7 +117,7 @@ class PaintWidget(QWidget):
 
     def mousePressEvent(self, event: QMouseEvent):
         """Обрабатывает нажатие кнопки мыши для начала панорамирования или добавления точки/завершения контура."""
-        if self.drawing_enabled:
+        if self.drawing_enabled == True:
             if event.button() == Qt.MouseButton.LeftButton:
                 self.is_drawing = True # Указываем, что начали рисовать (добавлять точки)
                 if self.drawing_mode == 'points':
@@ -227,6 +227,7 @@ class PaintWidget(QWidget):
 class OilApp(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.dir_path = None
         
         self.setWindowTitle('Идентификация нефтепродуктов на спутниковых снимках')
         self.image_changer = ImageChanger()
@@ -255,7 +256,7 @@ class OilApp(QMainWindow):
         
         self.tree = QTreeView()
         self.tree.setModel(self.model)
-        self.tree.setFixedHeight(380)
+        self.tree.setFixedHeight(340)
         self.tree.clicked.connect(self.on_file_clicked)
         self.tree.hide() # Скрываем дерево, пока не выбрана папка
         # Скрываем лишние колонки (размер, тип, дата)
@@ -275,21 +276,21 @@ class OilApp(QMainWindow):
 
         self.crop_label = QLabel('Подготовка данных для обучения модели')
 
-        self.sum_channels_button = QPushButton('Сложение каналов изображения')
+        self.sum_channels_button = QPushButton('Создание синтетического изображения')
         self.sum_channels_button.clicked.connect(self.sum_channels)
+        self.sum_channels_button.setToolTip('Выберите формулу выше и в появившемся окне укажите пути до нужных каналов одного изображения.')
 
-        band_list = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10']
-        self.band1_box = QComboBox(self)
-        self.band2_box = QComboBox(self)
-        self.band1_box.addItems(band_list)
-        self.band2_box.addItems(band_list)
+        self.formula_list = ['NDOI = ρλ(green)−ρλ(NIR) / ρλ(green)+ρλ(NIR)',
+                             'G‑SWIR = ρλ(green) −ρλ(SWIR2) / ρλ(green)+ρλ(SWIR2)',
+                             'CaBGS = ρλ(coastal_aerosol)+ρλ(blue) / ρλ(green)+ρλ(SWIR2)']
+        self.formula_box = QComboBox(self)
+        self.formula_box.addItems(self.formula_list)
+        self.formula_box.setToolTip('')
 
         self.crop_button = QPushButton('Подготовить выборку')
         self.crop_button.clicked.connect(self.run_markup)
-
-        layH2 = QHBoxLayout()
-        layH2.addWidget(self.band1_box)
-        layH2.addWidget(self.band2_box)
+        self.crop_button.setToolTip('Вы должны будете выбрать три папки: со снимками, с масками, путь сохранения.' \
+        ' \n В итоге получите разбитые и отсортированные изображения \n для обучающей выборки.')
 
         # Новые элементы для выделения контуров
         self.drawing_label = QLabel('Инструменты для выделения контуров')
@@ -321,9 +322,9 @@ class OilApp(QMainWindow):
         layV1.addWidget(self.geotiff_to_tiff_button)
         layV1.addWidget(self.clear_button)
         layV1.addWidget(self.find_edges_button)
-        layV1.addWidget(self.crop_label)
-        layV1.addLayout(layH2)
+        layV1.addWidget(self.formula_box)
         layV1.addWidget(self.sum_channels_button)
+        layV1.addWidget(self.crop_label)
         layV1.addWidget(self.crop_button)
         layV1.addWidget(self.drawing_label) # Добавляем новый раздел для рисования
         layV1.addLayout(layH_drawing_mode) # Добавляем выбор режима рисования
@@ -391,17 +392,29 @@ class OilApp(QMainWindow):
         if not input_path:
             QMessageBox.warning(self, "Предупреждение", "Сначала выберите директорию с исходными изображениями.")
             return
-
-        band1, band2 = self.band1_box.currentText(), self.band2_box.currentText()
-        output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда сохранить синтетическое изображение')
-        if not output_path: return
         try:
-            self.image_changer.sum_channels(input_path, output_path, band1, band2)
+            formula = self.formula_box.currentText()
+            if formula == self.formula_list[0]:
+                band1, band2 = QFileDialog.getOpenFileNames(self, "Выберите 2 файла в порядке: green, NIR", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")
+                output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда сохранить синтетическое изображение')
+                if not output_path: return
+                self.image_changer.sum_channels(output_path, band1, band2)
+            elif formula == self.formula_list[1]:
+                band1, band2 = QFileDialog.getOpenFileNames(self, "Выберите 2 файла в порядке: green, SWIR-2", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")
+                output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда сохранить синтетическое изображение')
+                if not output_path: return
+                self.image_changer.sum_channels(output_path, band1, band2)
+            elif formula == self.formula_list[2]:
+                band1, band2, band3, band4 = QFileDialog.getOpenFileNames(self, "Выберите 4 файла в порядке: coastal_aerosol, blue, green, SWIR-2", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")
+                output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда сохранить синтетическое изображение')
+                if not output_path: return
+                self.image_changer.sum_channels(output_path, band1, band2, band3, band4)
             QMessageBox.information(self, "Успех", "Сложение каналов завершено.")
         except FileNotFoundError as e:
             QMessageBox.critical(self, "Ошибка", f"Не найдены необходимые файлы каналов: {e}")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при сложении каналов: {e}")
+        
 
 
     def clear_directory(self):
@@ -452,7 +465,7 @@ class OilApp(QMainWindow):
 
 
     def toggle_drawing_mode(self):
-        """Переключает режим рисования в PaintWidget."""
+        '''Включаем или выключаем режим рисования'''
         is_checked = self.toggle_drawing_button.isChecked()
         self.paint_widget.set_drawing_enabled(is_checked)
         
