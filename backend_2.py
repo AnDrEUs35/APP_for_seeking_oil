@@ -103,7 +103,7 @@ class ImageChanger:
                 img_out.save(os.path.join(output_path, f'converted_{image}'), 'TIFF')
 
 
-    def sum_channels(self, output_path, *bands):
+    def sum_channels(self, output_path, bands):
         if len(bands) == 0:
             raise FileNotFoundError("Не найдены файлы с выбранными каналами")
         eps = 1e-6

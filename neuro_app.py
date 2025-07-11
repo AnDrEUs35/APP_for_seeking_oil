@@ -395,20 +395,24 @@ class OilApp(QMainWindow):
         try:
             formula = self.formula_box.currentText()
             if formula == self.formula_list[0]:
-                band1, band2 = QFileDialog.getOpenFileNames(self, "Выберите 2 файла в порядке: green, NIR", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")
+                bands = QFileDialog.getOpenFileNames(self, "Выберите 2 файла в порядке: green, NIR", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")[0]
+                print(bands)
+                bands = [os.path.join(input_path, band) for band in bands]
                 output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда сохранить синтетическое изображение')
                 if not output_path: return
-                self.image_changer.sum_channels(output_path, band1, band2)
+                self.image_changer.sum_channels(output_path, bands)
             elif formula == self.formula_list[1]:
-                band1, band2 = QFileDialog.getOpenFileNames(self, "Выберите 2 файла в порядке: green, SWIR-2", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")
+                bands = QFileDialog.getOpenFileNames(self, "Выберите 2 файла в порядке: green, SWIR-2", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")[0]
+                bands = [os.path.join(input_path, band) for band in bands]
                 output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда сохранить синтетическое изображение')
                 if not output_path: return
-                self.image_changer.sum_channels(output_path, band1, band2)
+                self.image_changer.sum_channels(output_path, bands)
             elif formula == self.formula_list[2]:
-                band1, band2, band3, band4 = QFileDialog.getOpenFileNames(self, "Выберите 4 файла в порядке: coastal_aerosol, blue, green, SWIR-2", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")
+                bands = QFileDialog.getOpenFileNames(self, "Выберите 4 файла в порядке: coastal_aerosol, blue, green, SWIR-2", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")[0]
+                bands = [os.path.join(input_path, band) for band in bands]
                 output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда сохранить синтетическое изображение')
                 if not output_path: return
-                self.image_changer.sum_channels(output_path, band1, band2, band3, band4)
+                self.image_changer.sum_channels(output_path, bands)
             QMessageBox.information(self, "Успех", "Сложение каналов завершено.")
         except FileNotFoundError as e:
             QMessageBox.critical(self, "Ошибка", f"Не найдены необходимые файлы каналов: {e}")
