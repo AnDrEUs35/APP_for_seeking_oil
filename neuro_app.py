@@ -1,9 +1,10 @@
 import sys
 from PyQt6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPushButton, QVBoxLayout, QWidget,
-                             QTreeView, QFileDialog, QInputDialog, QComboBox, QMessageBox)
+                             QTreeView, QFileDialog, QComboBox, QMessageBox, QTabWidget)
 from PyQt6.QtCore import Qt, QPoint, QModelIndex, QRect
-from PyQt6.QtGui import QFileSystemModel, QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut
-
+from PyQt6.QtGui import QFileSystemModel, QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
+from PIL import ImageQt
+import rasterio
 
 from backend_2 import *
 
@@ -25,31 +26,113 @@ class PaintWidget(QWidget):
         self.current_contour = [] # Точки текущего рисуемого контура (список QPoint)
         self.all_contours = [] # Все завершенные контуры (список списков QPoint)
 
+        self.selected_point_index = -1
+
         # Устанавливаем минимальный размер, чтобы виджет не был слишком маленьким
         self.setMinimumSize(600, 600)
 
         QShortcut(QKeySequence("Ctrl+Z"), self, activated=self.remove_last_contour)
 
     def load_image(self, path):
-        if self.pixmap.load(path) == True:
-            # Сбрасываем масштаб и смещение при загрузке нового изображения
+        
+        # if self.pixmap.load(path) == True:
+        #     # Сбрасываем масштаб и смещение при загрузке нового изображения
+        #     self.scale_factor = 1.0
+        #     self.pixmap_offset = QPoint() # Центрируем изображение
+        #     self.clear_contours() # Очищаем контуры при загрузке нового изображения
+        #     self.update()  # Запрашиваем перерисовку виджета
+        #     return True
+        # else:
+        #     print(f"Ошибка: не удалось загрузить изображение по пути {path}")
+        #     return False
+        
+        try:
+            with rasterio.open(path) as src:
+                data = src.read(1, masked=True).astype(np.float32)
+
+            if np.ma.is_masked(data) and data.mask.all():
+                print(f"Ошибка: Изображение по пути {path} не содержит валидных данных.")
+                QMessageBox.warning(self, "Ошибка загрузки", f"Изображение {os.path.basename(path)} не содержит валидных данных.")
+                return False
+
+            data = np.ma.filled(data, 0)
+            data[np.isnan(data)] = 0
+            valid_data = data[data != 0]
+            if valid_data.size == 0:
+                print(f"Предупреждение: В изображении {path} нет данных больше нуля. Отображается как есть.")
+                p2, p98 = 0, 1
+            else:
+                p2, p98 = np.percentile(valid_data, (2, 98))
+
+            # Масштабируем данные в диапазон 16-бит (0-65535)
+            data_scaled = np.clip(data, p2, p98)
+            if p98 - p2 > 0:
+                 # ИЗМЕНЕНИЕ: Масштабируем до 65535.0 для 16-битного изображения
+                 data_scaled = (data_scaled - p2) / (p98 - p2) * 65535.0
+            else:
+                 data_scaled.fill(0)
+
+            # ИЗМЕНЕНИЕ: Преобразуем данные в 16-битный беззнаковый целый тип.
+            image_data_uint16 = data_scaled.astype(np.uint16)
+
+            height, width = image_data_uint16.shape
+            # ИЗМЕНЕНИЕ: Для 16-битного изображения (2 байта на пиксель)
+            bytes_per_line = width * 2 
+
+            # ИЗМЕНЕНИЕ: Создаем QImage из массива NumPy в формате 16-битной серой шкалы.
+            qimage = QImage(
+                image_data_uint16.data,
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format.Format_Grayscale16
+            )
+
+            if qimage.isNull():
+                print("Ошибка: Не удалось создать QImage. Попробуем с копией данных.")
+                qimage = QImage(
+                    image_data_uint16.copy().data,
+                    width,
+                    height,
+                    bytes_per_line,
+                    QImage.Format.Format_Grayscale16
+                )
+                if qimage.isNull():
+                     print("Ошибка: Создание QImage с копией данных также не удалось.")
+                     QMessageBox.critical(self, "Ошибка", "Не удалось создать изображение для отображения.")
+                     return False
+
+            self.pixmap = QPixmap.fromImage(qimage)
+
             self.scale_factor = 1.0
-            self.pixmap_offset = QPoint() # Центрируем изображение
-            self.clear_contours() # Очищаем контуры при загрузке нового изображения
-            self.update()  # Запрашиваем перерисовку виджета
+            self.pixmap_offset = QPoint()
+            self.clear_contours()
+            self.update()
+            
+            print(f"Изображение {path} успешно загружено в 16-битном режиме.")
             return True
-        else:
-            print(f"Ошибка: не удалось загрузить изображение по пути {path}")
+
+        except rasterio.RasterioIOError as e:
+            error_message = f"Ошибка Rasterio: Не удалось прочитать файл {os.path.basename(path)}.\nВозможно, он поврежден или не является поддерживаемым TIFF форматом.\n\nДетали: {e}"
+            print(error_message)
+            QMessageBox.critical(self, "Ошибка чтения файла", error_message)
+            return False
+        except Exception as e:
+            error_message = f"Непредвиденная ошибка при загрузке изображения {os.path.basename(path)}:\n\n{e}"
+            print(error_message)
+            QMessageBox.critical(self, "Критическая ошибка", error_message)
             return False
 
-    def set_drawing_enabled(self, enabled: bool):
+
+    def set_drawing_enabled(self, enabled: bool):  # Для первой вкладки
         self.drawing_enabled = enabled
         if enabled == False:
             self.is_drawing = False # Останавливаем рисование, если режим рисования выключен
             self.current_contour = [] # Очищаем текущий контур при выключении режима
         self.update() # Обновляем виджет, чтобы отразить изменение режима
 
-    def set_drawing_mode(self, mode: str):
+
+    def set_drawing_mode(self, mode: str): # Для первой вкладки
         if mode in ['points', 'freehand']:
             self.drawing_mode = mode
             self.is_drawing = False # Сбрасываем состояние рисования
@@ -58,16 +141,14 @@ class PaintWidget(QWidget):
         else:
             print(f"Неизвестный режим рисования: {mode}")
 
-    def clear_contours(self):
+
+    def clear_contours(self):  # Для первой вкладки
         self.current_contour = []
         self.all_contours = []
         self.update()
 
-    def get_contours_in_image_coords(self):
-        """
-        Возвращает список всех нарисованных контуров, преобразованных в
-        координаты исходного изображения.
-        """
+
+    def get_contours_in_image_coords(self):  # Для первой вкладки
         if self.pixmap.isNull() == True:
             return []
 
@@ -78,6 +159,7 @@ class PaintWidget(QWidget):
         pixmap_top_left = widget_center - QPoint(target_width // 2, target_height // 2) + self.pixmap_offset
 
         transformed_contours = []
+        
         # Обрабатываем завершенные контуры, преобразуя их в один
         for contour in self.all_contours:
             transformed_single_contour = []
@@ -87,11 +169,12 @@ class PaintWidget(QWidget):
                 y_image = (qpoint.y() - pixmap_top_left.y()) / self.scale_factor
                 transformed_single_contour.append((int(x_image), int(y_image)))
             transformed_contours.append(transformed_single_contour)
+        print(transformed_contours)
         
         return transformed_contours
 
 
-    def wheelEvent(self, event: QWheelEvent):
+    def wheelEvent(self, event: QWheelEvent):  # Для первой и второй вкладок
         """Обрабатывает событие прокрутки колеса мыши для масштабирования."""
         # Отключаем масштабирование во время рисования для предотвращения искажений
         if self.drawing_enabled == True: # Масштабирование не работает, если режим рисования включен
@@ -107,7 +190,7 @@ class PaintWidget(QWidget):
         self.update()  # Перерисовываем виджет с новым масштабом
 
 
-    def remove_last_contour(self):
+    def remove_last_contour(self): # Для первой вкладки
         if self.all_contours:
             self.all_contours.pop()
             self.update()
@@ -116,15 +199,20 @@ class PaintWidget(QWidget):
 
 
     def mousePressEvent(self, event: QMouseEvent):
-        """Обрабатывает нажатие кнопки мыши для начала панорамирования или добавления точки/завершения контура."""
         if self.drawing_enabled == True:
             if event.button() == Qt.MouseButton.LeftButton:
                 self.is_drawing = True # Указываем, что начали рисовать (добавлять точки)
                 if self.drawing_mode == 'points':
-                    self.current_contour.append(event.pos()) # Добавляем точку к текущему контуру
+                    print(self.current_contour)
+                    found_distance = self.__find_distance(event)
+                    if found_distance == True:
+                        return
+                    else:
+                        self.current_contour.append(event.pos()) # Добавляем точку к текущему контуру
                 elif self.drawing_mode == 'freehand':
                     self.current_contour = [event.pos()] # Начинаем новый контур для свободного рисования
                 self.update()
+
             elif event.button() == Qt.MouseButton.RightButton:
                 # Завершаем текущий контур по правому клику (актуально для режима 'points')
                 if self.drawing_mode == 'points' and self.is_drawing and len(self.current_contour) > 1:
@@ -134,6 +222,7 @@ class PaintWidget(QWidget):
                 self.current_contour = [] # Сбрасываем текущий контур
                 self.is_drawing = False # Завершаем режим добавления точек
                 self.update()
+
         else: # Панорамирование, если режим рисования выключен
             if event.button() == Qt.MouseButton.LeftButton:
                 self.is_panning = True
@@ -144,12 +233,24 @@ class PaintWidget(QWidget):
         if self.drawing_enabled and self.drawing_mode == 'freehand' and self.is_drawing == True:
             self.current_contour.append(event.pos())
             self.update()
+        elif self.drawing_enabled and self.drawing_mode == 'points' and self.is_drawing == True and self.selected_point_index != -1:
+            delta = event.pos() - self.current_contour[self.selected_point_index]
+            self.current_contour[self.selected_point_index] += delta
+            self.update()
         elif self.is_panning:
             delta = event.pos() - self.pan_start_position
             self.pixmap_offset += delta
             self.pan_start_position = event.pos()
             self.update()
 
+    
+    def __find_distance(self, event: QMouseEvent):
+        for point in self.current_contour:
+            distance = np.sqrt((point.x() - event.pos().x())**2 + (point.y() - event.pos().y())**2)   
+            if distance <= 5:
+                self.selected_point_index = self.current_contour.index(point)
+                return True
+            
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if self.drawing_enabled and self.drawing_mode == 'freehand' and self.is_drawing:
@@ -161,6 +262,9 @@ class PaintWidget(QWidget):
                 self.current_contour = []
                 self.is_drawing = False
                 self.update()
+        if self.drawing_enabled == True and self.drawing_mode == 'points' and self.is_drawing and self.selected_point_index != -1:
+            self.selected_point_index = -1
+            self.update()
         elif self.is_panning:
             if event.button() == Qt.MouseButton.LeftButton:
                 self.is_panning = False
@@ -225,6 +329,8 @@ class PaintWidget(QWidget):
 
 
 class OilApp(QMainWindow):
+
+
     def __init__(self):
         super().__init__()
         self.dir_path = None
@@ -233,14 +339,20 @@ class OilApp(QMainWindow):
         self.image_changer = ImageChanger()
         self.current_image_path = None # Хранит путь к текущему загруженному изображению
         self.initUI()
+        self.resize(1024, 768)
+        self.neuro = NeuroBackEnd()
 
 
     def initUI(self):
-        central = QWidget()
-        main_lay = QVBoxLayout()
+        main_lay1 = QVBoxLayout()
+        main_lay2 = QVBoxLayout()
         layV1 = QVBoxLayout() # Вертикальный слой для кнопок и дерева файлов
         layH = QHBoxLayout() # Горизонтальный слой для дерева и области рисования
+        layV2 = QVBoxLayout()
+        layH2 = QHBoxLayout()
 
+
+        '''Это первая вкладка'''
         self.label = QLabel('Выберите каталог с изображениями')
         self.label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         
@@ -270,6 +382,7 @@ class OilApp(QMainWindow):
 
         self.geotiff_to_tiff_button = QPushButton('Преобразовать GeoTiff в Tiff')
         self.geotiff_to_tiff_button.clicked.connect(self.geotiff_to_tiff)
+
 
         self.find_edges_button = QPushButton('Найти границы на изображении')
         self.find_edges_button.clicked.connect(self.find_edges)
@@ -338,24 +451,100 @@ class OilApp(QMainWindow):
         layH.addWidget(self.paint_widget, 1) # Добавляем виджет рисования с растяжением
 
         # Собираем главный слой окна
-        main_lay.addWidget(self.label)
-        main_lay.addLayout(layH)
-    
-        central.setLayout(main_lay)
-        self.setCentralWidget(central)
+        main_lay1.addWidget(self.label)
+        main_lay1.addLayout(layH)
+
+        '''Конец первой вкладки'''
 
 
-    def choose_directory(self):
+        '''Это вторая вкладка'''
+        self.label2 = QLabel('Выберите директорию')
+        self.label2.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        
+        self.dir_button2 = QPushButton("Выбрать папку")
+        self.dir_button2.clicked.connect(self.choose_directory)
+
+        self.model2 = QFileSystemModel()
+        self.model2.setRootPath('')  # Изначально корень пустой
+        
+        self.tree2 = QTreeView()
+        self.tree2.setModel(self.model2)
+        self.tree2.setFixedHeight(340)
+        self.tree2.clicked.connect(self.on_file_clicked)
+        self.tree2.hide() # Скрываем дерево, пока не выбрана папка
+        # Скрываем лишние колонки (размер, тип, дата)
+        for col in range(1, self.model.columnCount()):
+            self.tree2.hideColumn(col)
+
+        self.visualize_widget = PaintWidget()
+
+        self.neuro_button = QPushButton('Найти пятна нефти')
+        self.neuro_button.clicked.connect(self.start_neuro)
+
+
+        layV2.addWidget(self.dir_button2)
+        layV2.addWidget(self.tree2)
+        layV2.addWidget(self.neuro_button)
+
+
+        layH2.addLayout(layV2)
+        layH2.addWidget(self.visualize_widget)
+
+        main_lay2.addWidget(self.label2)
+        main_lay2.addLayout(layH2)
+
+        '''Конец второй вкладки'''
+
+
+        self.tab_widget = QTabWidget() # Добавляем переключение между вкладками
+        tab1 = QWidget()
+        tab1.setLayout(main_lay1) # Первый виджет с обработкой снимков добавляется в таб
+
+        tab2 = QWidget()
+        tab2.setLayout(main_lay2)
+
+        self.tab_widget.addTab(tab1, "Обработка снимков")
+        self.tab_widget.addTab(tab2, "Поиск нефти нейросетью")
+
+        
+        self.setCentralWidget(self.tab_widget)
+
+        # self.setStyleSheet('''
+        # QMainWindow {
+        #             background-color: #eaebb2;
+        #             }
+        # QLabel {
+        #         color: black
+        #         }
+        # QPushButton {
+        #             background-color: #628860;
+        #             color: white;
+        #             border: 2px solid black;
+        #             }
+        # QComboBox {
+        #             border: 2px solid black;
+        #             border-radius: 5px;
+        #            }
+
+        # ''')
+
+
+    def choose_directory(self):   # Для первой и второй вкладок
         self.dir_path = QFileDialog.getExistingDirectory(
             self, "Выберите директорию", "")
-        if self.dir_path:
+        if self.dir_path and self.tab_widget.tabText(self.tab_widget.currentIndex()) == "Обработка снимков":
             self.label.setText(f"Текущая папка: {self.dir_path}")
             self.model.setRootPath(self.dir_path)
             self.tree.setRootIndex(self.model.index(self.dir_path))
             self.tree.show()
+        elif self.dir_path and self.tab_widget.tabText(self.tab_widget.currentIndex()) == "Поиск нефти нейросетью":
+            self.label2.setText(f"Текущая папка: {self.dir_path}")
+            self.model2.setRootPath(self.dir_path)
+            self.tree2.setRootIndex(self.model2.index(self.dir_path))
+            self.tree2.show()
 
 
-    def geotiff_to_tiff(self):
+    def geotiff_to_tiff(self):  # Для первой вкладки
         """Преобразует GeoTiff файлы в Tiff."""
         input_path = QFileDialog.getExistingDirectory(self, 'Укажите путь к папке с файлами GeoTiff')
         if not input_path: return
@@ -369,7 +558,7 @@ class OilApp(QMainWindow):
             print(e)
 
 
-    def find_edges(self):
+    def find_edges(self):  # Для первой вкладки
         index = self.tree.currentIndex()
         if not index.isValid() or self.model.isDir(index) == True:
             QMessageBox.warning(self, "Предупреждение", "Пожалуйста, выберите файл изображения.")
@@ -387,7 +576,7 @@ class OilApp(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при поиске границ: {e}")
 
     
-    def sum_channels(self):
+    def sum_channels(self):  # Для первой вкладки
         input_path = self.dir_path
         if not input_path:
             QMessageBox.warning(self, "Предупреждение", "Сначала выберите директорию с исходными изображениями.")
@@ -421,7 +610,7 @@ class OilApp(QMainWindow):
         
 
 
-    def clear_directory(self):
+    def clear_directory(self):   # Для первой вкладки
         directory = QFileDialog.getExistingDirectory(self, 'Выбор директории, которую нужно полностью очистить')
         if not directory: return
         reply = QMessageBox.question(self, 'Подтверждение очистки',
@@ -441,21 +630,28 @@ class OilApp(QMainWindow):
 
 
     def on_file_clicked(self, index: QModelIndex):
-        file_path = self.model.filePath(index)
-        if self.model.isDir(index) == False: # Проверяем, что это файл, а не папка
-            if self.paint_widget.load_image(file_path):
-                self.current_image_path = file_path # Сохраняем путь к загруженному изображению
+        if self.tab_widget.tabText(self.tab_widget.currentIndex()) == 'Обработка снимков':
+            file_path = self.model.filePath(index)
+            if self.model.isDir(index) == False: # Проверяем, что это файл, а не папка
+                if self.paint_widget.load_image(file_path):
+                    self.current_image_path = file_path # Сохраняем путь к загруженному изображению
+            else:
+                self.current_image_path = None # Очищаем путь, если выбрана директория
         else:
-            self.current_image_path = None # Очищаем путь, если выбрана директория
+            file_path = self.model2.filePath(index)
+            if self.model2.isDir(index) == False: # Проверяем, что это файл, а не папка
+                if self.visualize_widget.load_image(file_path):
+                    self.current_image_path = file_path # Сохраняем путь к загруженному изображению
+            else:
+                self.current_image_path = None # Очищаем путь, если выбрана директория
 
 
-    def run_markup(self):
+    def run_markup(self):  # Для первой вкладки
         snaps_path = QFileDialog.getExistingDirectory(self, "Выберите папку с изображениями")
         if snaps_path == None:
             return
         masks_path = QFileDialog.getExistingDirectory(self, "Выберите папку с масками")
-        if masks_path == None:
-            return
+            
         save_dir = QFileDialog.getExistingDirectory(self, "Выберите папку для сохранения")
         if save_dir == None:
             return
@@ -468,7 +664,7 @@ class OilApp(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Ошибка при подготовке выборки: {str(e)}")
 
 
-    def toggle_drawing_mode(self):
+    def toggle_drawing_mode(self):  # Для первой вкладки
         '''Включаем или выключаем режим рисования'''
         is_checked = self.toggle_drawing_button.isChecked()
         self.paint_widget.set_drawing_enabled(is_checked)
@@ -483,7 +679,8 @@ class OilApp(QMainWindow):
         else:
             self.label.setText("Режим рисования выключен. Используйте колесо мыши для масштабирования, ЛКМ для панорамирования.")
 
-    def set_current_drawing_mode(self, index: int):
+
+    def set_current_drawing_mode(self, index: int):  # Для первой вкладки
         """Устанавливает режим рисования в PaintWidget на основе выбора QComboBox."""
         mode_map = {
             0: 'points',
@@ -502,7 +699,7 @@ class OilApp(QMainWindow):
             self.label.setText("Режим рисования выключен. Используйте колесо мыши для масштабирования, ЛКМ для передвижения по изображению.")
 
 
-    def save_contours_as_mask(self):
+    def save_contours_as_mask(self):  # Для первой вкладки
         """Сохраняет нарисованные контуры как бинарную маску."""
         if self.current_image_path == None:
             QMessageBox.warning(self, "Предупреждение", "Сначала загрузите изображение, чтобы сохранить маску.")
@@ -533,10 +730,28 @@ class OilApp(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при сохранении маски: {e}")
 
 
+    def overlay_mask(self, mask_path):
+        index = self.tree2.currentIndex()
+        if not index.isValid():
+            QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
+            return
+        image_path = self.model2.filePath(index)
+        output_path = QFileDialog.getExistingDirectory(self, 'Укажиите путь для сохранения изображения')
+        if not output_path:
+            return
+        overlay_path = self.neuro.overlay_mask(image_path, mask_path, output_path)
+        
+        self.visualize_widget.load_image(overlay_path)
+
+
+    def start_neuro(self):
+        pass
+
+
+
 def main():
     app = QApplication(sys.argv)
     window = OilApp()
-    window.resize(1024, 768) # Увеличим начальный размер окна
     window.show()
     sys.exit(app.exec())
 

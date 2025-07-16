@@ -3,6 +3,7 @@ import numpy as np
 import os
 import shutil
 import rasterio
+import itertools
 
 class ImageMarkup:
     def __init__(self, images_path, masks_path):
@@ -26,10 +27,19 @@ class ImageMarkup:
         os.makedirs(saved_masks, exist_ok=True)
 
         snaps_list = sorted(os.listdir(self.images_path))
-        masks_list = sorted(os.listdir(self.masks_path))
+        print(self.masks_path)
         
+        if not self.masks_path:
+            empty_masks_path = os.path.join(save_dir, 'original_empty_masks')
+            os.makedirs(empty_masks_path, exist_ok=True)
+            for snap in snaps_list:
+                with Image.open(os.path.join(self.images_path, snap)) as img:
+                    empty_mask = Image.new('L', img.size, color=0)
+                    empty_mask.save(os.path.join(empty_masks_path, f'mask_{snap}'))
+                    self.masks_path = empty_masks_path
+
+        masks_list = sorted(os.listdir(self.masks_path))
         for snap, mask in zip(snaps_list, masks_list):
-            print(snap)
             img_path = os.path.join(self.images_path, snap)
             mask_path = os.path.join(self.masks_path, mask)
 
@@ -71,36 +81,58 @@ class ImageMarkup:
 
 
 class ImageChanger:
-
+        
 
     def find_edges(self, input_path, output_path, name):
         os.makedirs(output_path, exist_ok=True)
         with Image.open(input_path) as img:
             img_gray = img.convert('L')
             edges = img_gray.filter(ImageFilter.FIND_EDGES)
+            edges = edges.filter(ImageFilter.EDGE_ENHANCE)
             edges.save(os.path.join(output_path, name))
 
 
     def geotiff_to_tiff(self, input_path, output_path):
-        for image in os.listdir(input_path):
-            with rasterio.open(os.path.join(input_path, image)) as img:
-                img_array = img.read()
-                bands, h, w = img_array.shape 
-                if bands == 2:
-                    r = img_array[0].astype('uint8')
-                    g = img_array[1].astype('uint8')
-                    b = np.zeros((h, w), dtype='uint8')
-                    rgb = np.stack([r, g, b], axis=-1)
-                    img_out = Image.fromarray(rgb, mode='RGB')
-                elif bands == 1:
-                    img_array = img.read(1)
-                    img_array = np.nan_to_num(img_array)
-                    arr_min, arr_max = np.min(img_array), np.max(img_array)
-                    norm = ((img_array - arr_min) / (arr_max - arr_min + 1e-6)) * 255
-                    norm = norm.astype(np.uint8)
-                    img_out = Image.fromarray(norm, 'L')
+        # Убедимся, что выходная директория существует
+        os.makedirs(output_path, exist_ok=True)
+        
+        for image_name in os.listdir(input_path):
+            # Пропускаем системные файлы и файлы, не являющиеся TIFF
+            if image_name.startswith('.') or not image_name.lower().endswith(('.tif', '.tiff')):
+                continue
+
+            source_path = os.path.join(input_path, image_name)
+            output_filename = f'converted_{image_name}'
+            destination_path = os.path.join(output_path, output_filename)
+
+            try:
+                # Открываем исходный файл для чтения
+                with rasterio.open(source_path) as src:
+                    # Читаем данные первого канала
+                    # Неважно, сколько каналов было в исходном файле, мы берем только первый
+                    img_array = src.read(1)
+                    
+                    # Получаем метаданные (профиль) исходного файла
+                    profile = src.profile
                 
-                img_out.save(os.path.join(output_path, f'converted_{image}'), 'TIFF')
+                # Обновляем профиль для нашего выходного файла:
+                # 1. Устанавливаем тип данных float32
+                # 2. Указываем, что у нас будет только 1 канал
+                profile.update(
+                    dtype=rasterio.float32,
+                    count=1,
+                    compress='lzw'  # Опционально: добавляем сжатие без потерь
+                )
+
+                # Создаем новый файл TIFF в режиме записи с обновленным профилем
+                with rasterio.open(destination_path, 'w', **profile) as dst:
+                    # Записываем наш массив (приведя его к float32) в первый канал нового файла
+                    dst.write(img_array.astype(rasterio.float32), 1)
+
+                print(f"Файл '{image_name}' успешно преобразован в '{output_filename}'")
+
+            except Exception as e:
+                print(f"⚠️ Ошибка при обработке файла {image_name}: {e}")
 
 
     def sum_channels(self, output_path, bands):
@@ -140,23 +172,43 @@ class ImageChanger:
         Returns:
             PIL.Image.Image: Бинарное изображение-маска (режим 'L'), где контуры белые (255), фон черный (0).
         """
-        mask_image = Image.new('L', (image_width, image_height), 255) # Создаем белое изображение
+        mask_image = Image.new('L', (image_width, image_height), 0) # Создаем белое изображение
         draw = ImageDraw.Draw(mask_image) # Отрисовка маски
         
         for contour in contours:
             # Преобразуем список кортежей в плоский список координат для ImageDraw.polygon
-            for point in contour:
                 # point — это кортеж (x, y)
-                flat_contour = [coord for coord in point]
+            flat_contour = list(itertools.chain.from_iterable(contour)) # chain позволяет "пройтись" по всем элементам из всех переданных списков, как будто это один список.
             if len(flat_contour) >= 6: # Полигон требует как минимум 3 точки (6 координат)
-                draw.polygon(flat_contour, fill=0) # Заполняем чёрным цветом
+                draw.polygon(flat_contour, fill=255) # Заполняем чёрным цветом
         
         return mask_image
+    
+
+class NeuroBackEnd:
+
+
+    def overlay_mask(self, image_path, mask_to_overlay_path, output_path):
+        with Image.open(image_path).convert('RGB') as img, Image.open(mask_to_overlay_path).convert('L') as mask:
+            img_arr = np.array(img)
+            mask_arr = np.array(mask)
+
+            overlay = img_arr.copy()
+            overlay[mask_arr > 0] = (255, 0, 0)
+
+            overlay_img = Image.fromarray(overlay).convert('RGB')
+            overlay_path = os.path.join(output_path, f'overlayed_{os.path.basename(image_path)}')
+            overlay_img.save(overlay_path, 'TIFF')
+            return overlay_path
+            
 
 if __name__ == '__main__':
-    a = ImageMarkup('snaps', 'masks')
+    # a = ImageMarkup('snaps', 'masks')
     # a.work('snaps', 'masks', 'files', 'cr_masks')
     # a.geotiff_to_tiff('unready_snaps', 'ready_snaps')
     # a.sum_channels('C:/Users/Admin/Desktop/LC09_L2SP_176029_20250524_20250525_02_T1', 'be')
     # a.find_edges('be', 'ready_snaps')
+
+    b = NeuroBackEnd()
+    b.overlay_mask('cropped_images\converted_sentinel1_vv_18122024.tif', 'cropped_masks\sentinel1_vv_18122024_mask.tif')
     
