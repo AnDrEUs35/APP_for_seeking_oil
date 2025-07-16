@@ -27,7 +27,6 @@ class ImageMarkup:
         os.makedirs(saved_masks, exist_ok=True)
 
         snaps_list = sorted(os.listdir(self.images_path))
-        print(self.masks_path)
         
         if not self.masks_path:
             empty_masks_path = os.path.join(save_dir, 'original_empty_masks')

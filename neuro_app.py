@@ -169,7 +169,6 @@ class PaintWidget(QWidget):
                 y_image = (qpoint.y() - pixmap_top_left.y()) / self.scale_factor
                 transformed_single_contour.append((int(x_image), int(y_image)))
             transformed_contours.append(transformed_single_contour)
-        print(transformed_contours)
         
         return transformed_contours
 
@@ -203,7 +202,6 @@ class PaintWidget(QWidget):
             if event.button() == Qt.MouseButton.LeftButton:
                 self.is_drawing = True # Указываем, что начали рисовать (добавлять точки)
                 if self.drawing_mode == 'points':
-                    print(self.current_contour)
                     found_distance = self.__find_distance(event)
                     if found_distance == True:
                         return
@@ -585,7 +583,6 @@ class OilApp(QMainWindow):
             formula = self.formula_box.currentText()
             if formula == self.formula_list[0]:
                 bands = QFileDialog.getOpenFileNames(self, "Выберите 2 файла в порядке: green, NIR", input_path, "TIFF файлы (*.tif *.tiff);;Все файлы (*)")[0]
-                print(bands)
                 bands = [os.path.join(input_path, band) for band in bands]
                 output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда сохранить синтетическое изображение')
                 if not output_path: return
