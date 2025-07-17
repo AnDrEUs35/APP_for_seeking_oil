@@ -3,8 +3,31 @@ import numpy as np
 import os
 import rasterio
 import itertools
-# from osgeo import gdal
-# gdal.UseExceptions()
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QComboBox, QFormLayout, QMessageBox
+from osgeo import gdal
+gdal.UseExceptions()
+
+
+
+class ChannelSelectDialog(QDialog):
+    def __init__(self, parent, band_count):
+        super().__init__(parent)
+        self.setWindowTitle("Выберите канал")
+        self.combo = QComboBox(self)
+        for i in range(1, band_count+1):
+            self.combo.addItem(f"Канал {i}", i)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, parent=self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout = QFormLayout(self)
+        layout.addRow("Канал:", self.combo)
+        layout.addWidget(buttons)
+
+    @property
+    def selected_band(self):
+        return self.combo.currentData()
+
+
 
 class ImageMarkup:
     def __init__(self, images_path, masks_path):
@@ -56,11 +79,10 @@ class ImageMarkup:
 
 
     def tiff_to_png(self, dir_path, out_path):
-        # for f in os.listdir(dir_path):
-        #     in_path = dir_path+f
-        #     out_path = out_path + os.path.splitext(f)[0]+'.png'
-        #     ds = gdal.Translate(out_path, in_path, options="-scale -ot Byte")
-        pass
+        for f in os.listdir(dir_path):
+            in_path = dir_path+f
+            out_path = out_path + os.path.splitext(f)[0]+'.png'
+            ds = gdal.Translate(out_path, in_path, options="-scale -ot Byte")
         
 
 
@@ -99,6 +121,13 @@ class ImageChanger:
 
     def geotiff_to_tiff(self, input_path, output_path):
         os.makedirs(output_path, exist_ok=True)
+        formats = [
+            "uint8",
+            "uint16",
+            "uint32",
+            "int16",
+            "int32",
+            "float32"]
         
         for image_name in os.listdir(input_path):
             # Пропускаем системные файлы и файлы, не являющиеся TIFF
@@ -111,7 +140,17 @@ class ImageChanger:
 
             try:
                 with rasterio.open(source_path) as src:
-                    img_array = src.read(1)
+                    band_count = src.count
+                if band_count > 1:
+                    # спрашиваем пользователя, какой канал читать
+                    dlg = ChannelSelectDialog(self, band_count)
+                    if dlg.exec() != QDialog.DialogCode.Accepted:
+                        return False
+                    band = dlg.selected_band
+                else:
+                    band = 1
+                    img_array = src.read(band)
+                        
                     # Получаем метаданные (профиль) исходного файла
                     profile = src.profile
                 
@@ -120,32 +159,27 @@ class ImageChanger:
                 # 2. Указываем, что у нас будет только 1 канал
                 print(profile['dtype'])
                 if profile['dtype'] == 'float32':
-                    profile.update(
-                        dtype=rasterio.float32,
-                        count=1,
-                        compress='lzw'  # Опционально: добавляем сжатие без потерь
-                                    )
+                    profile.update(dtype=rasterio.float32, count=1, compress='lzw')
                     # Создаем новый файл TIFF в режиме записи с обновленным профилем
                     with rasterio.open(destination_path, 'w', **profile) as dst:
                         dst.write(img_array.astype(rasterio.float32), 1)
 
+                elif profile['dtype'] == 'uint32':
+                    profile.update(dtype=rasterio.uint32, count=1, compress='lzw')
+                    with rasterio.open(destination_path, 'w', **profile) as dst:
+                        dst.write(img_array.astype(rasterio.float32), 1)
+
                 elif profile['dtype'] == 'uint16':
-                    profile.update(
-                        dtype=rasterio.uint16,
-                        count=1,
-                        compress='lzw'  # Опционально: добавляем сжатие без потерь
-                                    )
+                    profile.update(dtype=rasterio.uint16, count=1, compress='lzw')
                     with rasterio.open(destination_path, 'w', **profile) as dst:
                         dst.write(img_array.astype(rasterio.uint16), 1)
 
-                elif profile['dtype'] == 'float64':
-                    profile.update(
-                        dtype=rasterio.float32,
-                        count=1,
-                        compress='lzw'  # Опционально: добавляем сжатие без потерь
-                                    )
+                elif profile['dtype'] == 'uint8':
+                    profile.update(dtype=rasterio.uint8, count=1, compress='lzw')
                     with rasterio.open(destination_path, 'w', **profile) as dst:
-                        dst.write(img_array.astype(rasterio.float32), 1)
+                        dst.write(img_array.astype(rasterio.uint16), 1)
+                else:
+                    QMessageBox.warning(f'Предупреждение: неподдерживаемый формат данных ({profile['dtype']})')
 
                 print(f"Файл '{image_name}' успешно преобразован в '{output_filename}'")
 

@@ -1,8 +1,8 @@
 import sys
-from PyQt6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPushButton, QVBoxLayout, QWidget,
-                             QTreeView, QFileDialog, QComboBox, QMessageBox, QTabWidget)
-from PyQt6.QtCore import Qt, QPoint, QModelIndex, QRect
-from PyQt6.QtGui import QFileSystemModel, QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
+from PySide6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPushButton, QVBoxLayout, QWidget,
+                             QTreeView, QFileDialog, QMessageBox, QTabWidget, QFileSystemModel)  # QComboBox импортирован в другом модуле
+from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect
+from PySide6.QtGui import QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 import shutil
 
 from backend_2 import *
@@ -36,7 +36,17 @@ class PaintWidget(QWidget):
     def load_image(self, path):
         try:
             with rasterio.open(path) as src:
-                data = src.read(1, masked=True).astype(np.float32)
+                band_count = src.count
+                if band_count > 1:
+                    # спрашиваем пользователя, какой канал читать
+                    dlg = ChannelSelectDialog(self, band_count)
+                    if dlg.exec() != QDialog.DialogCode.Accepted:
+                        return False
+                    band = dlg.selected_band
+                else:
+                    band = 1
+                data = src.read(band, masked=True).astype(np.float32)
+                        
 
             if np.ma.is_masked(data) and data.mask.all():
                 print(f"Ошибка: Изображение по пути {path} не содержит валидных данных.")
@@ -354,7 +364,7 @@ class OilApp(QMainWindow):
         
         self.tree = QTreeView()
         self.tree.setModel(self.model)
-        self.tree.setFixedHeight(340)
+        self.tree.setFixedHeight(200)
         self.tree.clicked.connect(self.on_file_clicked)
         self.tree.hide() # Скрываем дерево, пока не выбрана папка
         # Скрываем лишние колонки (размер, тип, дата)
