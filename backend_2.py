@@ -1,9 +1,10 @@
 from PIL import Image, ImageFilter, ImageDraw
 import numpy as np
 import os
-import shutil
 import rasterio
 import itertools
+# from osgeo import gdal
+# gdal.UseExceptions()
 
 class ImageMarkup:
     def __init__(self, images_path, masks_path):
@@ -11,14 +12,14 @@ class ImageMarkup:
         self.images_path = images_path
         self.masks_path = masks_path
 
-    def __crop_image(self, save_directory, img):
-        os.makedirs(save_directory, exist_ok=True)
+    def __crop_image(self, save_path, img):
         num = 0
         for i in range(0, img.width, 1024):
             for j in range(0, img.height, 1024):
                 cropped = img.crop((i, j, i + 1024, j + 1024))
-                cropped.save(os.path.join(save_directory, f'cropped_{num}.tif'))
+                cropped.save(f'{save_path}_cropped_{num}.tif')
                 num += 1
+
 
     def work(self, save_dir):
         saved_images = os.path.join(save_dir, 'cropped_images')
@@ -34,7 +35,7 @@ class ImageMarkup:
             for snap in snaps_list:
                 with Image.open(os.path.join(self.images_path, snap)) as img:
                     empty_mask = Image.new('L', img.size, color=0)
-                    empty_mask.save(os.path.join(empty_masks_path, f'mask_{snap}'))
+                    empty_mask.save(os.path.join(empty_masks_path, f'{snap}'))
                     self.masks_path = empty_masks_path
 
         masks_list = sorted(os.listdir(self.masks_path))
@@ -44,37 +45,42 @@ class ImageMarkup:
 
             with Image.open(img_path) as img, Image.open(mask_path) as msk:
                 for angle in (0, 30, 60, 90):
-                    rotated_img = img.rotate(angle, expand=True)
-                    rotated_msk = msk.rotate(angle, expand=True)
+                    rotated_img = img.rotate(angle)
+                    rotated_msk = msk.rotate(angle)
 
-                    img_dir = os.path.join(saved_images, snap[:-4], f'dir_{angle}')
-                    msk_dir = os.path.join(saved_masks, mask[:-4], f'dir_{angle}')
+                    img_path = os.path.join(saved_images, f'{snap[:-4]}_angle{angle}')
+                    msk_path = os.path.join(saved_masks, f'mask_{mask[:-4]}_angle{angle}')
 
-                    self.__crop_image(img_dir, rotated_img)
-                    self.__crop_image(msk_dir, rotated_msk)
+                    self.__crop_image(img_path, rotated_img)
+                    self.__crop_image(msk_path, rotated_msk)
 
 
-    def move_excess(self, saved_images, saved_masks, moved_images, moved_masks):
-        for dir_number in range(0, 120, 30):
-            images_dir = f'{saved_images}/dir_{dir_number}'
-            masks_dir = f'{saved_masks}/dir_{dir_number}'
-            to_move = []
+    def tiff_to_png(self, dir_path, out_path):
+        # for f in os.listdir(dir_path):
+        #     in_path = dir_path+f
+        #     out_path = out_path + os.path.splitext(f)[0]+'.png'
+        #     ds = gdal.Translate(out_path, in_path, options="-scale -ot Byte")
+        pass
 
-            for name in os.listdir(masks_dir):
-                with Image.open(os.path.join(masks_dir, name)) as cr_mask:
-                    arr = np.array(cr_mask)
-                    if not np.any(arr > 0):
-                        to_move.append(name)
 
-            os.makedirs(os.path.join(moved_images, f'dir_{dir_number}'), exist_ok=True)
-            os.makedirs(os.path.join(moved_masks, f'dir_{dir_number}'), exist_ok=True)
-
-            for name in to_move:
-                try:
-                    shutil.move(os.path.join(images_dir, name), os.path.join(moved_images, f'dir_{dir_number}', name))
-                    shutil.move(os.path.join(masks_dir, name), os.path.join(moved_masks, f'dir_{dir_number}', name))
-                except Exception as e:
-                    print(f'Ошибка при перемещении {name}: {e}')
+    def delete_excess(self, images_path, masks_path):
+        # deleted_images = []
+        # for img in os.listdir(images_path):
+        #     path = os.path.join(images_path, img)
+        #     with Image.open(path) as image:
+        #         img_arr = np.array(image)
+        #         non_zero_pixels = np.count_nonzero(img_arr)
+        #         if non_zero_pixels == 0:
+        #             deleted_images.append(img)
+        #             os.remove(path)
+        # if deleted_images:
+        #     for img in deleted_images:
+        #         if img[:5] != 'mask_':
+        #             return Exception('Маска не найдена или названа некорректно (должно начинаться с "mask_").')
+        #         mask_name = 'mask_' + img
+        #         path = os.path.join(masks_path, mask_name)
+        #         os.remove(path)
+        pass
 
     
 
@@ -101,32 +107,46 @@ class ImageChanger:
                 continue
 
             source_path = os.path.join(input_path, image_name)
-            output_filename = f'converted_{image_name}'
+            output_filename = f'{image_name}'
             destination_path = os.path.join(output_path, output_filename)
 
             try:
-                # Открываем исходный файл для чтения
                 with rasterio.open(source_path) as src:
-                    # Читаем данные первого канала
-                    # Неважно, сколько каналов было в исходном файле, мы берем только первый
                     img_array = src.read(1)
-                    
                     # Получаем метаданные (профиль) исходного файла
                     profile = src.profile
                 
                 # Обновляем профиль для нашего выходного файла:
                 # 1. Устанавливаем тип данных float32
                 # 2. Указываем, что у нас будет только 1 канал
-                profile.update(
-                    dtype=rasterio.float32,
-                    count=1,
-                    compress='lzw'  # Опционально: добавляем сжатие без потерь
-                )
+                print(profile['dtype'])
+                if profile['dtype'] == 'float32':
+                    profile.update(
+                        dtype=rasterio.float32,
+                        count=1,
+                        compress='lzw'  # Опционально: добавляем сжатие без потерь
+                                    )
+                    # Создаем новый файл TIFF в режиме записи с обновленным профилем
+                    with rasterio.open(destination_path, 'w', **profile) as dst:
+                        dst.write(img_array.astype(rasterio.float32), 1)
 
-                # Создаем новый файл TIFF в режиме записи с обновленным профилем
-                with rasterio.open(destination_path, 'w', **profile) as dst:
-                    # Записываем наш массив (приведя его к float32) в первый канал нового файла
-                    dst.write(img_array.astype(rasterio.float32), 1)
+                elif profile['dtype'] == 'uint16':
+                    profile.update(
+                        dtype=rasterio.uint16,
+                        count=1,
+                        compress='lzw'  # Опционально: добавляем сжатие без потерь
+                                    )
+                    with rasterio.open(destination_path, 'w', **profile) as dst:
+                        dst.write(img_array.astype(rasterio.uint16), 1)
+
+                elif profile['dtype'] == 'float64':
+                    profile.update(
+                        dtype=rasterio.float32,
+                        count=1,
+                        compress='lzw'  # Опционально: добавляем сжатие без потерь
+                                    )
+                    with rasterio.open(destination_path, 'w', **profile) as dst:
+                        dst.write(img_array.astype(rasterio.float32), 1)
 
                 print(f"Файл '{image_name}' успешно преобразован в '{output_filename}'")
 
@@ -202,12 +222,5 @@ class NeuroBackEnd:
             
 
 if __name__ == '__main__':
-    # a = ImageMarkup('snaps', 'masks')
-    # a.work('snaps', 'masks', 'files', 'cr_masks')
-    # a.geotiff_to_tiff('unready_snaps', 'ready_snaps')
-    # a.sum_channels('C:/Users/Admin/Desktop/LC09_L2SP_176029_20250524_20250525_02_T1', 'be')
-    # a.find_edges('be', 'ready_snaps')
-
-    b = NeuroBackEnd()
-    b.overlay_mask('cropped_images\converted_sentinel1_vv_18122024.tif', 'cropped_masks\sentinel1_vv_18122024_mask.tif')
+   pass
     

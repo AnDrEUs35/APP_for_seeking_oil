@@ -5,6 +5,7 @@ from PyQt6.QtCore import Qt, QPoint, QModelIndex, QRect
 from PyQt6.QtGui import QFileSystemModel, QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 from PIL import ImageQt
 import rasterio
+import shutil
 
 from backend_2 import *
 
@@ -33,19 +34,8 @@ class PaintWidget(QWidget):
 
         QShortcut(QKeySequence("Ctrl+Z"), self, activated=self.remove_last_contour)
 
+
     def load_image(self, path):
-        
-        # if self.pixmap.load(path) == True:
-        #     # Сбрасываем масштаб и смещение при загрузке нового изображения
-        #     self.scale_factor = 1.0
-        #     self.pixmap_offset = QPoint() # Центрируем изображение
-        #     self.clear_contours() # Очищаем контуры при загрузке нового изображения
-        #     self.update()  # Запрашиваем перерисовку виджета
-        #     return True
-        # else:
-        #     print(f"Ошибка: не удалось загрузить изображение по пути {path}")
-        #     return False
-        
         try:
             with rasterio.open(path) as src:
                 data = src.read(1, masked=True).astype(np.float32)
@@ -337,7 +327,7 @@ class OilApp(QMainWindow):
         self.image_changer = ImageChanger()
         self.current_image_path = None # Хранит путь к текущему загруженному изображению
         self.initUI()
-        self.resize(1024, 768)
+        self.setMinimumSize(1024, 768)
         self.neuro = NeuroBackEnd()
 
 
@@ -403,6 +393,12 @@ class OilApp(QMainWindow):
         self.crop_button.setToolTip('Вы должны будете выбрать три папки: со снимками, с масками, путь сохранения.' \
         ' \n В итоге получите разбитые и отсортированные изображения \n для обучающей выборки.')
 
+        self.tiff_to_png_button = QPushButton('Преобразовать выборку в PNG')
+        self.tiff_to_png_button.clicked.connect(self.tiff_to_png)
+
+        self.del_excess_button = QPushButton('Удалить из выборки все изображения NoData')
+        self.del_excess_button.clicked.connect(self.del_excess)
+
         # Новые элементы для выделения контуров
         self.drawing_label = QLabel('Инструменты для выделения контуров')
         self.toggle_drawing_button = QPushButton('Включить/Выключить рисование')
@@ -437,6 +433,8 @@ class OilApp(QMainWindow):
         layV1.addWidget(self.sum_channels_button)
         layV1.addWidget(self.crop_label)
         layV1.addWidget(self.crop_button)
+        layV1.addWidget(self.tiff_to_png_button)
+        layV1.addWidget(self.del_excess_button)
         layV1.addWidget(self.drawing_label) # Добавляем новый раздел для рисования
         layV1.addLayout(layH_drawing_mode) # Добавляем выбор режима рисования
         layV1.addWidget(self.toggle_drawing_button)
@@ -506,25 +504,6 @@ class OilApp(QMainWindow):
 
         
         self.setCentralWidget(self.tab_widget)
-
-        # self.setStyleSheet('''
-        # QMainWindow {
-        #             background-color: #eaebb2;
-        #             }
-        # QLabel {
-        #         color: black
-        #         }
-        # QPushButton {
-        #             background-color: #628860;
-        #             color: white;
-        #             border: 2px solid black;
-        #             }
-        # QComboBox {
-        #             border: 2px solid black;
-        #             border-radius: 5px;
-        #            }
-
-        # ''')
 
 
     def choose_directory(self):   # Для первой и второй вкладок
@@ -661,6 +640,19 @@ class OilApp(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Ошибка при подготовке выборки: {str(e)}")
 
 
+    def tiff_to_png(self):
+        images_path = QFileDialog.getExistingDirectory('Выберите директорию с изображениями', '')
+        masks_path = QFileDialog.getExistingDirectory('Выберите директорию с изображениями', '')
+        self.markup.tiff_to_png(images_path, masks_path)
+
+    
+    def del_excess(self):
+        try:
+            images_path, masks_path = QFileDialog.getExistingDirectory('Выберите директорию с изображениями', ''), QFileDialog.getExistingDirectory('Выберите директорию с изображениями', '')
+            self.markup.delete_excess(images_path, masks_path)
+        except Exception as e:
+            QMessageBox.critical(f'Ошибка: {e}')
+
     def toggle_drawing_mode(self):  # Для первой вкладки
         '''Включаем или выключаем режим рисования'''
         is_checked = self.toggle_drawing_button.isChecked()
@@ -715,13 +707,13 @@ class OilApp(QMainWindow):
             QMessageBox.information(self, "Информация", "Нет нарисованных контуров для сохранения.")
             return
 
-        save_path, _ = QFileDialog.getSaveFileName(self, "Сохранить маску контуров", "", "TIFF Files (*.tif);;PNG Files (*.png);;All Files (*)")
+        save_path, _ = QFileDialog.getExistingDirectory(self, "Сохранить маску контуров", "")
         if save_path == None:
             return
 
         try:
             mask_image = self.image_changer.create_mask_from_contours(original_width, original_height, contours)
-            mask_image.save(save_path)
+            mask_image.save(os.path.join(save_path, f'mask_{os.path.basename(self.current_image_path)}'))
             QMessageBox.information(self, "Успех", f"Маска контуров успешно сохранена в {save_path}")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при сохранении маски: {e}")
@@ -743,6 +735,7 @@ class OilApp(QMainWindow):
 
     def start_neuro(self):
         pass
+
 
 
 
