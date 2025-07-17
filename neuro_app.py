@@ -3,8 +3,6 @@ from PyQt6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPu
                              QTreeView, QFileDialog, QComboBox, QMessageBox, QTabWidget)
 from PyQt6.QtCore import Qt, QPoint, QModelIndex, QRect
 from PyQt6.QtGui import QFileSystemModel, QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
-from PIL import ImageQt
-import rasterio
 import shutil
 
 from backend_2 import *
@@ -522,7 +520,6 @@ class OilApp(QMainWindow):
 
 
     def geotiff_to_tiff(self):  # Для первой вкладки
-        """Преобразует GeoTiff файлы в Tiff."""
         input_path = QFileDialog.getExistingDirectory(self, 'Укажите путь к папке с файлами GeoTiff')
         if not input_path: return
         output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда файл нужно сохранить')
