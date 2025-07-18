@@ -237,11 +237,10 @@ class ImageChanger:
 class NeuroBackEnd:
 
 
-    def overlay_mask(self, image_path, mask_to_overlay_path, output_path):
-        with Image.open(image_path).convert('RGB') as img, Image.open(mask_to_overlay_path).convert('L') as mask:
+    def overlay_mask(self, image_path, mask_arr, output_path):
+        with Image.open(image_path).convert('RGB') as img:
             img_arr = np.array(img)
-            mask_arr = np.array(mask)
-
+        
             overlay = img_arr.copy()
             overlay[mask_arr > 0] = (255, 0, 0)
 

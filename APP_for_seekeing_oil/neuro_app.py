@@ -732,16 +732,16 @@ class OilApp(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при сохранении маски: {e}")
 
 
-    def overlay_mask(self, mask_path):
+    def overlay_mask(self, mask_array):
         index = self.tree2.currentIndex()
         if not index.isValid():
             QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
             return
         image_path = self.model2.filePath(index)
-        output_path = QFileDialog.getExistingDirectory(self, 'Укажиите путь для сохранения изображения')
+        output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь для сохранения изображения')
         if not output_path:
             return
-        overlay_path = self.neuro.overlay_mask(image_path, mask_path, output_path)
+        overlay_path = self.neuro.overlay_mask(image_path, mask_array, output_path)
         
         self.visualize_widget.load_image(overlay_path)
 
