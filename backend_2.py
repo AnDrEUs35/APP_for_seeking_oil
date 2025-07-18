@@ -3,13 +3,15 @@ import numpy as np
 import os
 import rasterio
 import itertools
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QComboBox, QFormLayout, QMessageBox
+from PySide6.QtWidgets import QDialog, QDialogButtonBox, QComboBox, QFormLayout, QWidget
 from osgeo import gdal
 gdal.UseExceptions()
 
 
 
 class ChannelSelectDialog(QDialog):
+
+
     def __init__(self, parent, band_count):
         super().__init__(parent)
         self.setWindowTitle("Выберите канал")
@@ -23,6 +25,7 @@ class ChannelSelectDialog(QDialog):
         layout.addRow("Канал:", self.combo)
         layout.addWidget(buttons)
 
+
     @property
     def selected_band(self):
         return self.combo.currentData()
@@ -30,10 +33,7 @@ class ChannelSelectDialog(QDialog):
 
 
 class ImageMarkup:
-    def __init__(self, images_path, masks_path):
-        self.corner = 0
-        self.images_path = images_path
-        self.masks_path = masks_path
+
 
     def __crop_image(self, save_path, img):
         num = 0
@@ -44,27 +44,27 @@ class ImageMarkup:
                 num += 1
 
 
-    def work(self, save_dir):
+    def work(self, images_path, masks_path, save_dir):
         saved_images = os.path.join(save_dir, 'cropped_images')
         saved_masks = os.path.join(save_dir, 'cropped_masks')
         os.makedirs(saved_images, exist_ok=True)
         os.makedirs(saved_masks, exist_ok=True)
 
-        snaps_list = sorted(os.listdir(self.images_path))
+        snaps_list = sorted(os.listdir(images_path))
         
-        if not self.masks_path:
+        if not masks_path:
             empty_masks_path = os.path.join(save_dir, 'original_empty_masks')
             os.makedirs(empty_masks_path, exist_ok=True)
             for snap in snaps_list:
-                with Image.open(os.path.join(self.images_path, snap)) as img:
+                with Image.open(os.path.join(images_path, snap)) as img:
                     empty_mask = Image.new('L', img.size, color=0)
                     empty_mask.save(os.path.join(empty_masks_path, f'{snap}'))
-                    self.masks_path = empty_masks_path
+                    masks_path = empty_masks_path
 
-        masks_list = sorted(os.listdir(self.masks_path))
+        masks_list = sorted(os.listdir(masks_path))
         for snap, mask in zip(snaps_list, masks_list):
-            img_path = os.path.join(self.images_path, snap)
-            mask_path = os.path.join(self.masks_path, mask)
+            img_path = os.path.join(images_path, snap)
+            mask_path = os.path.join(masks_path, mask)
 
             with Image.open(img_path) as img, Image.open(mask_path) as msk:
                 for angle in (0, 30, 60, 90):
@@ -80,9 +80,9 @@ class ImageMarkup:
 
     def tiff_to_png(self, dir_path, out_path):
         for f in os.listdir(dir_path):
-            in_path = dir_path+f
-            out_path = out_path + os.path.splitext(f)[0]+'.png'
-            ds = gdal.Translate(out_path, in_path, options="-scale -ot Byte")
+            in_path = os.path.join(dir_path, f)
+            output_path = out_path + '/' + os.path.splitext(f)[0]+'.png'
+            ds = gdal.Translate(output_path, in_path, options="-scale -ot Byte")
         
 
 
@@ -119,16 +119,20 @@ class ImageChanger:
             edges.save(os.path.join(output_path, name))
 
 
-    def geotiff_to_tiff(self, input_path, output_path):
+    def geotiff_to_tiff(self, input_path, output_path, parent):
         os.makedirs(output_path, exist_ok=True)
-        formats = [
-            "uint8",
-            "uint16",
-            "uint32",
-            "int16",
-            "int32",
-            "float32"]
-        
+        # спрашиваем пользователя, какой канал читать
+        count_bands = []
+        for img in os.listdir(input_path):
+            with rasterio.open(os.path.join(input_path, img)) as test:
+                if test.count > 1:
+                    count_bands.append(test.count)
+        if len(set(count_bands)) <= 1:
+            dlg = ChannelSelectDialog(parent, count_bands[0])
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return False
+        else:
+            raise Exception('В выборке не все изображения содержат одинаковое количество каналов > 1')
         for image_name in os.listdir(input_path):
             # Пропускаем системные файлы и файлы, не являющиеся TIFF
             if image_name.startswith('.') or not image_name.lower().endswith(('.tif', '.tiff')):
@@ -138,53 +142,46 @@ class ImageChanger:
             output_filename = f'{image_name}'
             destination_path = os.path.join(output_path, output_filename)
 
-            try:
-                with rasterio.open(source_path) as src:
-                    band_count = src.count
+            with rasterio.open(source_path) as src:
+                band_count = src.count
                 if band_count > 1:
-                    # спрашиваем пользователя, какой канал читать
-                    dlg = ChannelSelectDialog(self, band_count)
+                    band = dlg.selected_band
+                if band_count != count_bands[0]:
+                    dlg = ChannelSelectDialog(parent, band_count)
                     if dlg.exec() != QDialog.DialogCode.Accepted:
                         return False
                     band = dlg.selected_band
                 else:
                     band = 1
-                    img_array = src.read(band)
-                        
+                img_array = src.read(band)
+                    
                     # Получаем метаданные (профиль) исходного файла
-                    profile = src.profile
-                
-                # Обновляем профиль для нашего выходного файла:
-                # 1. Устанавливаем тип данных float32
-                # 2. Указываем, что у нас будет только 1 канал
-                print(profile['dtype'])
-                if profile['dtype'] == 'float32':
-                    profile.update(dtype=rasterio.float32, count=1, compress='lzw')
-                    # Создаем новый файл TIFF в режиме записи с обновленным профилем
-                    with rasterio.open(destination_path, 'w', **profile) as dst:
-                        dst.write(img_array.astype(rasterio.float32), 1)
+                profile = src.profile
+            
+            # Обновляем профиль для нашего выходного файла:
+            # 1. Устанавливаем тип данных float32
+            # 2. Указываем, что у нас будет только 1 канал
+            if profile['dtype'] == 'float32':
+                profile.update(dtype=rasterio.float32, count=1, compress='lzw')
+                # Создаем новый файл TIFF в режиме записи с обновленным профилем
+                with rasterio.open(destination_path, 'w', **profile) as dst:
+                    dst.write(img_array.astype(rasterio.float32), 1)
 
-                elif profile['dtype'] == 'uint32':
-                    profile.update(dtype=rasterio.uint32, count=1, compress='lzw')
-                    with rasterio.open(destination_path, 'w', **profile) as dst:
-                        dst.write(img_array.astype(rasterio.float32), 1)
+            elif profile['dtype'] == 'uint32':
+                profile.update(dtype=rasterio.uint32, count=1, compress='lzw')
+                with rasterio.open(destination_path, 'w', **profile) as dst:
+                    dst.write(img_array.astype(rasterio.float32), 1)
 
-                elif profile['dtype'] == 'uint16':
-                    profile.update(dtype=rasterio.uint16, count=1, compress='lzw')
-                    with rasterio.open(destination_path, 'w', **profile) as dst:
-                        dst.write(img_array.astype(rasterio.uint16), 1)
+            elif profile['dtype'] == 'uint16':
+                profile.update(dtype=rasterio.uint16, count=1, compress='lzw')
+                with rasterio.open(destination_path, 'w', **profile) as dst:
+                    dst.write(img_array.astype(rasterio.uint16), 1)
 
-                elif profile['dtype'] == 'uint8':
-                    profile.update(dtype=rasterio.uint8, count=1, compress='lzw')
-                    with rasterio.open(destination_path, 'w', **profile) as dst:
-                        dst.write(img_array.astype(rasterio.uint16), 1)
-                else:
-                    QMessageBox.warning(f'Предупреждение: неподдерживаемый формат данных ({profile['dtype']})')
+            elif profile['dtype'] == 'uint8':
+                profile.update(dtype=rasterio.uint8, count=1, compress='lzw')
+                with rasterio.open(destination_path, 'w', **profile) as dst:
+                    dst.write(img_array.astype(rasterio.uint16), 1)
 
-                print(f"Файл '{image_name}' успешно преобразован в '{output_filename}'")
-
-            except Exception as e:
-                print(f"⚠️ Ошибка при обработке файла {image_name}: {e}")
 
 
     def sum_channels(self, output_path, bands):

@@ -11,6 +11,8 @@ dependencies = [
     "pyqt6>=6.9.1",
     "pyside6>=6.9.1",
     "rasterio>=1.4.3",
+    "segmentation-models-pytorch>=0.5.0",
+    "torch>=2.7.1",
 ]
 
 [tool.uv.sources]

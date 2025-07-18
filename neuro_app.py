@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPushButton, QVBoxLayout, QWidget,
-                             QTreeView, QFileDialog, QMessageBox, QTabWidget, QFileSystemModel)  # QComboBox импортирован в другом модуле
+                             QTreeView, QFileDialog, QMessageBox, QTabWidget, QFileSystemModel)  # QComboBox и QWidget импортирован в другом модуле
 from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect
 from PySide6.QtGui import QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 import shutil
@@ -535,7 +535,7 @@ class OilApp(QMainWindow):
         output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь, куда файл нужно сохранить')
         if not output_path: return
         try:
-            self.image_changer.geotiff_to_tiff(input_path, output_path)
+            self.image_changer.geotiff_to_tiff(input_path, output_path, parent=self)
             QMessageBox.information(self, "Успех", "Преобразование GeoTiff в Tiff завершено.")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при преобразовании: {e}")
@@ -639,18 +639,24 @@ class OilApp(QMainWindow):
         if save_dir == None:
             return
 
-        self.markup = ImageMarkup(snaps_path, masks_path)
+        self.markup = ImageMarkup()
         try:
-            self.markup.work(save_dir)
+            self.markup.work(snaps_path, masks_path, save_dir)
             QMessageBox.information(self, "Успех", "Подготовка выборки завершена.")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка при подготовке выборки: {str(e)}")
 
 
     def tiff_to_png(self):
-        images_path = QFileDialog.getExistingDirectory('Выберите директорию с изображениями', '')
-        masks_path = QFileDialog.getExistingDirectory('Выберите директорию с изображениями', '')
-        self.markup.tiff_to_png(images_path, masks_path)
+        try:
+            dir_input_path = QFileDialog.getExistingDirectory(self, 'Выберите директорию с изображениями', '')
+            out_path = QFileDialog.getExistingDirectory(self, 'Выберите директорию для сохранения', '')
+            self.markup = ImageMarkup()
+            self.markup.tiff_to_png(dir_input_path, out_path)
+        except Exception as e:
+            QMessageBox.critical(self, 'Ошибка', f'Произошла ошибка: {e}')
+        else:
+            QMessageBox.information(self, 'Успех', 'Выборка преобразована в PNG')
 
     
     def del_excess(self):
@@ -658,7 +664,7 @@ class OilApp(QMainWindow):
             images_path, masks_path = QFileDialog.getExistingDirectory('Выберите директорию с изображениями', ''), QFileDialog.getExistingDirectory('Выберите директорию с изображениями', '')
             self.markup.delete_excess(images_path, masks_path)
         except Exception as e:
-            QMessageBox.critical(f'Ошибка: {e}')
+            QMessageBox.critical(self, 'Ошибка', f'Произошла ошибка: {e}')
 
     def toggle_drawing_mode(self):  # Для первой вкладки
         '''Включаем или выключаем режим рисования'''
