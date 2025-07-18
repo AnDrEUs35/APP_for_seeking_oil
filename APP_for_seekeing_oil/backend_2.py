@@ -37,14 +37,15 @@ class ImageMarkup:
 
     def __crop_image(self, save_path, img):
         num = 0
-        for i in range(0, img.width, 1024):
-            for j in range(0, img.height, 1024):
-                cropped = img.crop((i, j, i + 1024, j + 1024))
+        for i in range(0, img.width, self.size):
+            for j in range(0, img.height, self.size):
+                cropped = img.crop((i, j, i + self.size, j + self.size))
                 cropped.save(f'{save_path}_cropped_{num}.tif')
                 num += 1
 
 
-    def work(self, images_path, masks_path, save_dir):
+    def work(self, images_path, masks_path, save_dir, size):
+        self.size = size
         saved_images = os.path.join(save_dir, 'cropped_images')
         saved_masks = os.path.join(save_dir, 'cropped_masks')
         os.makedirs(saved_images, exist_ok=True)

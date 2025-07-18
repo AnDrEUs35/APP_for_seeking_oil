@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPushButton, QVBoxLayout, QWidget,
-                             QTreeView, QFileDialog, QMessageBox, QTabWidget, QFileSystemModel)  # QComboBox и QWidget импортирован в другом модуле
+                             QTreeView, QFileDialog, QMessageBox, QTabWidget, QFileSystemModel, QLineEdit)  # QComboBox и QWidget импортирован в другом модуле
 from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect
 from PySide6.QtGui import QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 import shutil
@@ -364,7 +364,7 @@ class OilApp(QMainWindow):
         
         self.tree = QTreeView()
         self.tree.setModel(self.model)
-        self.tree.setFixedHeight(200)
+        self.tree.setFixedHeight(170)
         self.tree.clicked.connect(self.on_file_clicked)
         self.tree.hide() # Скрываем дерево, пока не выбрана папка
         # Скрываем лишние колонки (размер, тип, дата)
@@ -395,6 +395,12 @@ class OilApp(QMainWindow):
         self.formula_box = QComboBox(self)
         self.formula_box.addItems(self.formula_list)
         self.formula_box.setToolTip('')
+
+        self.lenth_label = QLabel('Длина стороны сегмента:')
+        self.size_input = QLineEdit()
+        segment_lay = QHBoxLayout()
+        segment_lay.addWidget(self.lenth_label)
+        segment_lay.addWidget(self.size_input)
 
         self.crop_button = QPushButton('Подготовить выборку')
         self.crop_button.clicked.connect(self.run_markup)
@@ -440,6 +446,7 @@ class OilApp(QMainWindow):
         layV1.addWidget(self.formula_box)
         layV1.addWidget(self.sum_channels_button)
         layV1.addWidget(self.crop_label)
+        layV1.addLayout(segment_lay)
         layV1.addWidget(self.crop_button)
         layV1.addWidget(self.tiff_to_png_button)
         layV1.addWidget(self.del_excess_button)
@@ -482,7 +489,7 @@ class OilApp(QMainWindow):
 
         self.visualize_widget = PaintWidget()
 
-        self.neuro_button = QPushButton('Найти пятна нефти')
+        self.neuro_button = QPushButton('Найти разливы \n нефтепродуктов')
         self.neuro_button.clicked.connect(self.start_neuro)
 
 
@@ -641,7 +648,12 @@ class OilApp(QMainWindow):
 
         self.markup = ImageMarkup()
         try:
-            self.markup.work(snaps_path, masks_path, save_dir)
+            size = self.size_input.text()
+            if size == '':
+                size = 1024
+            else:
+                size = int(size)
+            self.markup.work(snaps_path, masks_path, save_dir, size)
             QMessageBox.information(self, "Успех", "Подготовка выборки завершена.")
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Ошибка при подготовке выборки: {str(e)}")
