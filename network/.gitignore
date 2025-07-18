@@ -1,0 +1,16 @@
+__pycache__/
+.ruff_cache/
+images/
+images_test/
+masks/
+masks_test/
+output_images/
+test_dir/
+dataset/
+mask_train/
+im_train/
+im_val/
+mask_test/
+im_test/
+mask_val/
+model.bin
