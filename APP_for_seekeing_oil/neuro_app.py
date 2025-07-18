@@ -661,8 +661,9 @@ class OilApp(QMainWindow):
     
     def del_excess(self):
         try:
-            images_path, masks_path = QFileDialog.getExistingDirectory('Выберите директорию с изображениями', ''), QFileDialog.getExistingDirectory('Выберите директорию с изображениями', '')
-            self.markup.delete_excess(images_path, masks_path)
+            images_path, masks_path = QFileDialog.getExistingDirectory(self, 'Выберите директорию с изображениями', ''), QFileDialog.getExistingDirectory(self, 'Выберите директорию с масками', '')
+            markup = ImageMarkup()
+            markup.delete_excess(images_path, masks_path)
         except Exception as e:
             QMessageBox.critical(self, 'Ошибка', f'Произошла ошибка: {e}')
 
@@ -733,21 +734,21 @@ class OilApp(QMainWindow):
 
 
     def overlay_mask(self, mask_array):
-        index = self.tree2.currentIndex()
-        if not index.isValid():
-            QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
-            return
-        image_path = self.model2.filePath(index)
         output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь для сохранения изображения')
         if not output_path:
             return
-        overlay_path = self.neuro.overlay_mask(image_path, mask_array, output_path)
+        overlay_path = self.neuro.overlay_mask(self.image_path, mask_array, output_path)
         
         self.visualize_widget.load_image(overlay_path)
 
 
     def start_neuro(self):
-        pass
+        index = self.tree2.currentIndex()
+        if not index.isValid():
+            QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
+            return
+        self.image_path = self.model2.filePath(index)
+        # binary_mask_arr = твоя функция(self.image_path)
 
 
 
