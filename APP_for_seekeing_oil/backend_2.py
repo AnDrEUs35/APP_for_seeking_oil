@@ -44,8 +44,8 @@ class ImageMarkup:
                 num += 1
 
 
-    def work(self, images_path, masks_path, save_dir, size):
-        self.size = size
+    def work(self, images_path, masks_path, save_dir):
+        self.size = 1024
         saved_images = os.path.join(save_dir, 'cropped_images')
         saved_masks = os.path.join(save_dir, 'cropped_masks')
         os.makedirs(saved_images, exist_ok=True)
