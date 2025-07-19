@@ -276,6 +276,15 @@ class NeuroBackEnd:
         img_tensor = transform(image)
         return img_tensor
 
+    # def work_model(self, model_path, output_dir):
+    #     device = "cpu"
+    #     model.load_state_dict(torch.load("model1.bin"))
+    #     model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
+    #     model.load_state_dict(torch.load(model_path, map_location=device))
+    #     model.to(device)
+    #     self.test_model(model, output_dir)
+
+
 
     # def visualize(self, output_dir, image_filename, **images):
     #     """PLot images in one row."""
@@ -323,13 +332,7 @@ class NeuroBackEnd:
         
     
 
-    # def work_model(self, model_path, output_dir):
-    #     device = "cpu"
-    #     model.load_state_dict(torch.load("model1.bin"))
-    #     model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
-    #     model.load_state_dict(torch.load(model_path, map_location=device))
-    #     model.to(device)
-    #     self.test_model(model, output_dir)
+
         
 
 
