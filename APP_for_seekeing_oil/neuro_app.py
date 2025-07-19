@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect
 from PySide6.QtGui import QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 import shutil
 
-from backend_2 import *
+from .backend_2 import *
 
 class PaintWidget(QWidget):
     
@@ -336,7 +336,7 @@ class OilApp(QMainWindow):
         self.current_image_path = None # Хранит путь к текущему загруженному изображению
         self.initUI()
         self.setMinimumSize(1024, 768)
-        self.neuro = NeuroBackEnd()
+        self.neuro = NeuroBackEnd('C:/Users/Admin/Desktop/MyPythonProjects/APP_for_seekeing_oil/model.bin')
 
 
     def initUI(self):
@@ -749,6 +749,7 @@ class OilApp(QMainWindow):
             return
         self.image_path = self.model2.filePath(index)
         mask_arr = self.neuro.predict_mask(self.image_path)
+        print(mask_arr)
         mask = Image.fromarray(mask_arr, mode='L')
         mask.show()
 

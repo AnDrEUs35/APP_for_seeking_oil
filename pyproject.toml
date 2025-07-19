@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "gdal>=3.11.1",
+    "matplotlib>=3.10.3",
     "numpy>=2.3.1",
     "pillow>=11.3.0",
     "pyqt6>=6.9.1",

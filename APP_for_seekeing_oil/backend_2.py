@@ -6,7 +6,7 @@ import itertools
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QComboBox, QFormLayout, QWidget
 from osgeo import gdal
 import torch
-from ..network.model import Model
+from network.model import Model
 from torchvision import transforms
 gdal.UseExceptions()
 
