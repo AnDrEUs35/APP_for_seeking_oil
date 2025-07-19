@@ -7,8 +7,6 @@ import itertools
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QComboBox, QFormLayout, QWidget
 from osgeo import gdal
 import torch
-from network.model import Model
-from torchvision import transforms
 import matplotlib as plt
 gdal.UseExceptions()
 from torch.optim import lr_scheduler
@@ -252,42 +250,6 @@ class ImageChanger:
 class NeuroBackEnd:
 
 
-
-
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(message)s",
-        datefmt="%d:%m:%Y %H:%M:%S",
-    )
-
-    # ----------------------------
-    # Set the device to GPU if available
-    # ----------------------------
-
-
-    device = "cpu"
-
-    main_dir = Path(__file__).parent
-    mask_test_dir = os.path.join(main_dir, "mask_test")
-    test_dir = os.path.join(main_dir, "im_test")
-
-
-    # Create a directory to store the output masks
-    output_dir = os.path.join(main_dir, "output_images")
-    os.makedirs(output_dir, exist_ok=True)
-
-    # ----------------------------
-    # Define the hyperparameters
-    # ----------------------------
-
-
-    eta_min = 1e-5  # Minimum learning rate for the scheduler
-    batch_size = 8  # Batch size for training
-    input_image_reshape = (128, 128)  # Desired shape for the input images and masks
-    foreground_class = 255  # 1 for binary segmentation
-
-
     def visualize(self, output_dir, image_filename, **images):
         """PLot images in one row."""
         n = len(images)
@@ -298,7 +260,7 @@ class NeuroBackEnd:
             plt.yticks([])
             plt.title(" ".join(name.split("_")).title())
             plt.imshow(image)
-        plt.savefig(os.path.join(output_dir, image_filename))
+        # plt.savefig(os.path.join(output_dir, image_filename))
         plt.show()
         plt.close()
 
@@ -369,29 +331,42 @@ class NeuroBackEnd:
         )
 
         return test_loss_mean, accuracy.item(), f1_score.item(), iou_score.item()
+    
 
-    x_test_dir = test_dir
-    y_test_dir = mask_test_dir
+    def load_model(self, image_dir, output_dir):
+        logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(message)s",
+        datefmt="%d:%m:%Y %H:%M:%S",
+        )
 
-    test_dataset = Dataset(
-        x_test_dir,
-        y_test_dir,
-        input_image_reshape=input_image_reshape,
-        foreground_class=foreground_class,
-    )
 
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-    model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
+        device = "cpu"
 
-    # Define the loss function
-    loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
-    torch.backends.cudnn.benchmark = True
-    # # Evaluate the model
-    model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
-    model.load_state_dict(torch.load("model1.bin"))
-    test_loss = test_model(model, output_dir, test_dataloader, loss_fn, device)
-    logging.info(f"Test Loss: {test_loss[0]:.4f}, IoU Score: {test_loss[3]:.4f}, Accuracy: {test_loss[1]:.4f}, F1 score: {test_loss[2]:.4f}")
-    logging.info(f"The output masks are saved in {output_dir}.")
+
+        eta_min = 1e-5  # Minimum learning rate for the scheduler
+        batch_size = 8  # Batch size for training
+        input_image_reshape = (128, 128)  # Desired shape for the input images and masks
+        foreground_class = 255  # 1 for binary segmentation
+
+        test_dataset = Dataset(
+            image_dir,
+            input_image_reshape=input_image_reshape,
+            foreground_class=foreground_class,
+        )
+
+        test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+        model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
+
+        # Define the loss function
+        loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+        torch.backends.cudnn.benchmark = True
+        # Evaluate the model
+        model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
+        model.load_state_dict(torch.load("model1.bin"))
+        test_loss = self.test_model(model, output_dir, test_dataloader, loss_fn, device)
+        logging.info(f"Test Loss: {test_loss[0]:.4f}, IoU Score: {test_loss[3]:.4f}, Accuracy: {test_loss[1]:.4f}, F1 score: {test_loss[2]:.4f}")
+        logging.info(f"The output masks are saved in {output_dir}.")
 
 
 

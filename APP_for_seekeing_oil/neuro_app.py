@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect
 from PySide6.QtGui import QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 import shutil
 
-from .backend_2 import *
+from backend_2 import *
 
 class PaintWidget(QWidget):
     
@@ -748,7 +748,7 @@ class OilApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
             return
         self.image_path = self.model2.filePath(index)
-        mask_arr = self.neuro.load_model_weights()
+        self.neuro.load_model()
         print(mask_arr)
         mask = Image.fromarray(mask_arr, mode='L')
         mask.show()
