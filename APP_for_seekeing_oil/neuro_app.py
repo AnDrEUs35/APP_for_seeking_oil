@@ -749,9 +749,8 @@ class OilApp(QMainWindow):
             return
         self.image_path = self.model2.filePath(index)
         self.neuro.load_model()
-        print(mask_arr)
-        mask = Image.fromarray(mask_arr, mode='L')
-        mask.show()
+        # mask = Image.fromarray(mask_arr, mode='L')
+        # mask.show()
 
 
 

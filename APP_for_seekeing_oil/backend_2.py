@@ -333,40 +333,14 @@ class NeuroBackEnd:
         return test_loss_mean, accuracy.item(), f1_score.item(), iou_score.item()
     
 
-    def load_model(self, image_dir, output_dir):
-        logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(message)s",
-        datefmt="%d:%m:%Y %H:%M:%S",
-        )
-
-
+    def load_model(self, model_path, output_dir):
         device = "cpu"
-
-
-        eta_min = 1e-5  # Minimum learning rate for the scheduler
-        batch_size = 8  # Batch size for training
-        input_image_reshape = (128, 128)  # Desired shape for the input images and masks
-        foreground_class = 255  # 1 for binary segmentation
-
-        test_dataset = Dataset(
-            image_dir,
-            input_image_reshape=input_image_reshape,
-            foreground_class=foreground_class,
-        )
-
-        test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-        model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
-
-        # Define the loss function
-        loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
-        torch.backends.cudnn.benchmark = True
-        # Evaluate the model
-        model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
         model.load_state_dict(torch.load("model1.bin"))
-        test_loss = self.test_model(model, output_dir, test_dataloader, loss_fn, device)
-        logging.info(f"Test Loss: {test_loss[0]:.4f}, IoU Score: {test_loss[3]:.4f}, Accuracy: {test_loss[1]:.4f}, F1 score: {test_loss[2]:.4f}")
-        logging.info(f"The output masks are saved in {output_dir}.")
+        model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.to(device)
+        model.eval()
+        
 
 
 
