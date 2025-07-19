@@ -249,74 +249,7 @@ class ImageChanger:
 
 class NeuroBackEnd:
 
-
-    def visualize(self, output_dir, image_filename, **images):
-        """PLot images in one row."""
-        n = len(images)
-        plt.figure(figsize=(16, 5))
-        for i, (name, image) in enumerate(images.items()):
-            plt.subplot(1, n, i + 1)
-            plt.xticks([])
-            plt.yticks([])
-            plt.title(" ".join(name.split("_")).title())
-            plt.imshow(image)
-        # plt.savefig(os.path.join(output_dir, image_filename))
-        plt.show()
-        plt.close()
-
-
-    def test_model(self, model, output_dir, device):
-        model.eval()
-
-        with torch.no_grad():
-            for batch in tqdm(test_dataloader, desc="Evaluating"):
-                images, masks = batch
-                images, masks = images.to(device), masks.to(device)
-
-                # For BCELoss, apply sigmoid manually before loss
-                outputs = model(images)
-                prob_outputs = torch.sigmoid(outputs)
-
-                for i, output in enumerate(prob_outputs):
-                    input_img = images[i].cpu().numpy().transpose(1, 2, 0)
-                    output_img = output.squeeze().cpu().numpy()
-                    
-                    self.visualize(
-                        output_dir,
-                        f"output_{i}.png",
-                        input_image=input_img,
-                        output_mask=output_img,
-                        binary_mask=output_img > 0.5,
-                    )
-
-
-                # pred_mask = (prob_outputs.squeeze(1) > 0.5).long()
-
-
-        
-    
-
-    def work_model(self, model_path, output_dir):
-        device = "cpu"
-        model.load_state_dict(torch.load("model1.bin"))
-        model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        model.to(device)
-        self.test_model(model, output_dir)
-        
-
-
-
-    
-    """
     def load_model_weights(model_path: str, device: str = "cpu") -> torch.nn.Module:
-        
-        Загружает модель из файла.
-
-        :param model_path: путь до .bin файла с весами
-        :param device: 'cpu' или 'cuda'
-        :return: модель с загруженными весами
-        
         model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.to(device)
@@ -325,16 +258,6 @@ class NeuroBackEnd:
 
 
     def infer_and_visualize(model: torch.nn.Module, image_tensor: torch.Tensor) -> np.ndarray:
-
-        
-        
-        Делает инференс по одному изображению и визуализирует результат.
-
-        :param model: обученная модель
-        :param image_tensor: тензор изображения (C, H, W)
-        :return: numpy-массив бинарной маски
-        
-        
         with torch.no_grad():
             image_tensor = image_tensor.unsqueeze(0)  # Add batch dim
             output = model(image_tensor)
@@ -364,7 +287,64 @@ class NeuroBackEnd:
         plt.show()
 
         return mask
-"""
+
+
+    # def visualize(self, output_dir, image_filename, **images):
+    #     """PLot images in one row."""
+    #     n = len(images)
+    #     plt.figure(figsize=(16, 5))
+    #     for i, (name, image) in enumerate(images.items()):
+    #         plt.subplot(1, n, i + 1)
+    #         plt.xticks([])
+    #         plt.yticks([])
+    #         plt.title(" ".join(name.split("_")).title())
+    #         plt.imshow(image)
+    #     # plt.savefig(os.path.join(output_dir, image_filename))
+    #     plt.show()
+    #     plt.close()
+
+
+    # def test_model(self, model, output_dir, device):
+    #     model.eval()
+
+    #     with torch.no_grad():
+    #         for batch in tqdm(test_dataloader, desc="Evaluating"):
+    #             images, masks = batch
+    #             images, masks = images.to(device), masks.to(device)
+
+    #             # For BCELoss, apply sigmoid manually before loss
+    #             outputs = model(images)
+    #             prob_outputs = torch.sigmoid(outputs)
+
+    #             for i, output in enumerate(prob_outputs):
+    #                 input_img = images[i].cpu().numpy().transpose(1, 2, 0)
+    #                 output_img = output.squeeze().cpu().numpy()
+                    
+    #                 self.visualize(
+    #                     output_dir,
+    #                     f"output_{i}.png",
+    #                     input_image=input_img,
+    #                     output_mask=output_img,
+    #                     binary_mask=output_img > 0.5,
+    #                 )
+
+
+    #             # pred_mask = (prob_outputs.squeeze(1) > 0.5).long()
+
+
+        
+    
+
+    # def work_model(self, model_path, output_dir):
+    #     device = "cpu"
+    #     model.load_state_dict(torch.load("model1.bin"))
+    #     model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
+    #     model.load_state_dict(torch.load(model_path, map_location=device))
+    #     model.to(device)
+    #     self.test_model(model, output_dir)
+        
+
+
             
 
 if __name__ == '__main__':
