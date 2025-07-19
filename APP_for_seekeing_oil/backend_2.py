@@ -5,6 +5,9 @@ import rasterio
 import itertools
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QComboBox, QFormLayout, QWidget
 from osgeo import gdal
+import torch
+from ..network.model import Model
+from torchvision import transforms
 gdal.UseExceptions()
 
 
@@ -237,18 +240,32 @@ class ImageChanger:
 
 class NeuroBackEnd:
 
+    def __init__(self, model_path: str, device: str = "cpu"):
+        self.device = device
+        self.model = self._load_model(model_path)
 
-    def overlay_mask(self, image_path, mask_arr, output_path):
-        with Image.open(image_path).convert('RGB') as img:
-            img_arr = np.array(img)
-        
-            overlay = img_arr.copy()
-            overlay[mask_arr > 0] = (255, 0, 0)
+    def _load_model(self, model_path: str) -> torch.nn.Module:
+        model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
+        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model.to(self.device)
+        model.eval()
+        return model
 
-            overlay_img = Image.fromarray(overlay).convert('RGB')
-            overlay_path = os.path.join(output_path, f'overlayed_{os.path.basename(image_path)}')
-            overlay_img.save(overlay_path, 'TIFF')
-            return overlay_path
+    def predict_mask(self, image_path: str) -> np.ndarray:
+        image = Image.open(image_path).convert('RGB')
+        tensor = self._preprocess(image)
+        with torch.no_grad():
+            output = self.model(tensor)
+            mask = torch.sigmoid(output.squeeze(0)).squeeze().cpu().numpy()
+        return (mask > 0.5).astype(np.uint8)
+    
+    def _preprocess(self, image: Image.Image) -> torch.Tensor:
+        transform = transforms.Compose([
+            transforms.Resize((256, 256)),  # можно заменить на реальный размер, если известен
+            transforms.ToTensor()
+        ])
+        tensor = transform(image).unsqueeze(0).to(self.device)
+        return tensor
             
 
 if __name__ == '__main__':

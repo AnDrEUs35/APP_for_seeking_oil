@@ -748,7 +748,9 @@ class OilApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
             return
         self.image_path = self.model2.filePath(index)
-        # binary_mask_arr = твоя функция(self.image_path)
+        mask_arr = self.neuro.predict_mask(self.image_path)
+        mask = Image.fromarray(mask_arr, mode='L')
+        mask.show()
 
 
 
