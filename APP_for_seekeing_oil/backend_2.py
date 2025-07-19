@@ -8,6 +8,7 @@ from osgeo import gdal
 import torch
 from network.model import Model
 from torchvision import transforms
+import matplotlib as plt
 gdal.UseExceptions()
 
 
@@ -148,15 +149,16 @@ class ImageChanger:
 
             with rasterio.open(source_path) as src:
                 band_count = src.count
-                if band_count > 1:
+                print(band_count, count_bands[0])
+                if band_count == count_bands[0]:
                     band = dlg.selected_band
-                if band_count != count_bands[0]:
+                elif band_count == 1:
+                    band = 1
+                else:
                     dlg = ChannelSelectDialog(parent, band_count)
                     if dlg.exec() != QDialog.DialogCode.Accepted:
                         return False
                     band = dlg.selected_band
-                else:
-                    band = 1
                 img_array = src.read(band)
                     
                     # Получаем метаданные (профиль) исходного файла
@@ -239,33 +241,59 @@ class ImageChanger:
     
 
 class NeuroBackEnd:
+    def load_model_weights(model_path: str, device: str = "cpu") -> torch.nn.Module:
+        """
+        Загружает модель из файла.
 
-    def __init__(self, model_path: str, device: str = "cpu"):
-        self.device = device
-        self.model = self._load_model(model_path)
-
-    def _load_model(self, model_path: str) -> torch.nn.Module:
+        :param model_path: путь до .bin файла с весами
+        :param device: 'cpu' или 'cuda'
+        :return: модель с загруженными весами
+        """
         model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
-        model.to(self.device)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.to(device)
         model.eval()
         return model
 
-    def predict_mask(self, image_path: str) -> np.ndarray:
-        image = Image.open(image_path).convert('RGB')
-        tensor = self._preprocess(image)
+
+    def infer_and_visualize(model: torch.nn.Module, image_tensor: torch.Tensor) -> np.ndarray:
+        """
+        Делает инференс по одному изображению и визуализирует результат.
+
+        :param model: обученная модель
+        :param image_tensor: тензор изображения (C, H, W)
+        :return: numpy-массив бинарной маски
+        """
         with torch.no_grad():
-            output = self.model(tensor)
-            mask = torch.sigmoid(output.squeeze(0)).squeeze().cpu().numpy()
-        return (mask > 0.5).astype(np.uint8)
-    
-    def _preprocess(self, image: Image.Image) -> torch.Tensor:
-        transform = transforms.Compose([
-            transforms.Resize((256, 256)),  # можно заменить на реальный размер, если известен
-            transforms.ToTensor()
-        ])
-        tensor = transform(image).unsqueeze(0).to(self.device)
-        return tensor
+            image_tensor = image_tensor.unsqueeze(0)  # Add batch dim
+            output = model(image_tensor)
+            prob = torch.sigmoid(output.squeeze(0))
+            mask = (prob > 0.5).float().cpu().numpy().squeeze()
+
+        # Визуализация
+        img_np = image_tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)
+        plt.figure(figsize=(12, 4))
+
+        plt.subplot(1, 3, 1)
+        plt.title("Input Image")
+        plt.imshow(img_np)
+        plt.axis("off")
+
+        plt.subplot(1, 3, 2)
+        plt.title("Raw Output")
+        plt.imshow(prob.cpu().squeeze(), cmap="gray")
+        plt.axis("off")
+
+        plt.subplot(1, 3, 3)
+        plt.title("Binary Mask")
+        plt.imshow(mask, cmap="gray")
+        plt.axis("off")
+
+        plt.tight_layout()
+        plt.show()
+
+        return mask
+
             
 
 if __name__ == '__main__':

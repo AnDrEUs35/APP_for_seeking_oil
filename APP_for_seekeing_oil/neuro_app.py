@@ -336,7 +336,7 @@ class OilApp(QMainWindow):
         self.current_image_path = None # Хранит путь к текущему загруженному изображению
         self.initUI()
         self.setMinimumSize(1024, 768)
-        self.neuro = NeuroBackEnd('C:/Users/Admin/Desktop/MyPythonProjects/APP_for_seekeing_oil/model.bin')
+        self.neuro = NeuroBackEnd()
 
 
     def initUI(self):
@@ -748,7 +748,7 @@ class OilApp(QMainWindow):
             QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
             return
         self.image_path = self.model2.filePath(index)
-        mask_arr = self.neuro.predict_mask(self.image_path)
+        mask_arr = self.neuro.load_model_weights()
         print(mask_arr)
         mask = Image.fromarray(mask_arr, mode='L')
         mask.show()
