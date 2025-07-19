@@ -747,10 +747,12 @@ class OilApp(QMainWindow):
         if not index.isValid():
             QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
             return
-        self.image_path = self.model2.filePath(index)
-        self.neuro.load_model()
-        # mask = Image.fromarray(mask_arr, mode='L')
-        # mask.show()
+        image_path = self.model2.filePath(index)
+        model = self.neuro.load_model_weights('APP_for_seekeing_oil/model1.bin')
+        tensor = self.neuro.img_path_to_tensor(image_path)
+        mask_arr = self.neuro.infer_and_visualize(model, tensor)
+        mask = Image.fromarray(mask_arr)
+        mask.show()
 
 
 

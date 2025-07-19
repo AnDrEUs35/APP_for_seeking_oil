@@ -9,12 +9,8 @@ from osgeo import gdal
 import torch
 import matplotlib as plt
 gdal.UseExceptions()
-from torch.optim import lr_scheduler
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from pathlib import Path
-from dataset import Dataset
 from model import Model
+from torchvision import transforms
 
 import segmentation_models_pytorch as smp
 
@@ -217,7 +213,7 @@ class ImageChanger:
             return 'Несоответствие количества файлов'
 
         norm_index = ((sum_bands + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
-        img = Image.fromarray(norm_index, mode='L')
+        img = Image.fromarray(norm_index)
         img.save(os.path.join(output_path, 'sum_result.tif'))
 
     def create_mask_from_contours(self, image_width: int, image_height: int, contours: list[list[tuple]]):
@@ -249,7 +245,7 @@ class ImageChanger:
 
 class NeuroBackEnd:
 
-    def load_model_weights(model_path: str, device: str = "cpu") -> torch.nn.Module:
+    def load_model_weights(self, model_path: str, device: str = "cpu") -> torch.nn.Module:
         model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.to(device)
@@ -257,36 +253,28 @@ class NeuroBackEnd:
         return model
 
 
-    def infer_and_visualize(model: torch.nn.Module, image_tensor: torch.Tensor) -> np.ndarray:
+    def infer_and_visualize(self, model: torch.nn.Module, image_tensor: torch.Tensor) -> np.ndarray:
         with torch.no_grad():
             image_tensor = image_tensor.unsqueeze(0)  # Add batch dim
             output = model(image_tensor)
             prob = torch.sigmoid(output.squeeze(0))
-            mask = (prob > 0.5).float().cpu().numpy().squeeze()
+            mask = ((prob > 0.5).float().cpu().numpy().squeeze() * 255).astype(np.uint8)
+            print(mask)
 
         # Визуализация
         img_np = image_tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)
-        plt.figure(figsize=(12, 4))
-
-        plt.subplot(1, 3, 1)
-        plt.title("Input Image")
-        plt.imshow(img_np)
-        plt.axis("off")
-
-        plt.subplot(1, 3, 2)
-        plt.title("Raw Output")
-        plt.imshow(prob.cpu().squeeze(), cmap="gray")
-        plt.axis("off")
-
-        plt.subplot(1, 3, 3)
-        plt.title("Binary Mask")
-        plt.imshow(mask, cmap="gray")
-        plt.axis("off")
-
-        plt.tight_layout()
-        plt.show()
 
         return mask
+    
+
+    def img_path_to_tensor(self, img_path):
+        image = Image.open(img_path)
+        transform = transforms.Compose([
+            transforms.PILToTensor()
+        ])
+
+        img_tensor = transform(image)
+        return img_tensor
 
 
     # def visualize(self, output_dir, image_filename, **images):
