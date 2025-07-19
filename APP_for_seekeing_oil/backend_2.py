@@ -265,10 +265,8 @@ class NeuroBackEnd:
         plt.close()
 
 
-    def test_model(self, model, output_dir, test_dataloader, loss_fn, device):
+    def test_model(self, model, output_dir, device):
         model.eval()
-        test_loss = 0.0
-        tp, fp, fn, tn = 0, 0, 0, 0
 
         with torch.no_grad():
             for batch in tqdm(test_dataloader, desc="Evaluating"):
@@ -278,7 +276,6 @@ class NeuroBackEnd:
                 # For BCELoss, apply sigmoid manually before loss
                 outputs = model(images)
                 prob_outputs = torch.sigmoid(outputs)
-                loss = loss_fn(prob_outputs, masks.float())
 
                 for i, output in enumerate(prob_outputs):
                     input_img = images[i].cpu().numpy().transpose(1, 2, 0)
@@ -292,54 +289,20 @@ class NeuroBackEnd:
                         binary_mask=output_img > 0.5,
                     )
 
-                test_loss += loss.item()
 
-                pred_mask = (prob_outputs.squeeze(1) > 0.5).long()
+                # pred_mask = (prob_outputs.squeeze(1) > 0.5).long()
 
-                batch_tp, batch_fp, batch_fn, batch_tn = smp.metrics.get_stats(
-                    pred_mask, masks.long(), mode="binary"
-                )
 
-                tp += batch_tp.sum().item()
-                fp += batch_fp.sum().item()
-                fn += batch_fn.sum().item()
-                tn += batch_tn.sum().item()
-
-        test_loss_mean = test_loss / len(test_dataloader)
-
-        iou_score = smp.metrics.iou_score(
-            torch.tensor([tp]),
-            torch.tensor([fp]),
-            torch.tensor([fn]),
-            torch.tensor([tn]),
-            reduction="micro",
-        )
-        accuracy = smp.metrics.accuracy(
-            torch.tensor([tp]),
-            torch.tensor([fp]),
-            torch.tensor([fn]),
-            torch.tensor([tn]),
-            reduction="macro",
-        )
-
-        f1_score = smp.metrics.f1_score(
-            torch.tensor([tp]),
-            torch.tensor([fp]),
-            torch.tensor([fn]),
-            torch.tensor([tn]),
-            reduction="micro",
-        )
-
-        return test_loss_mean, accuracy.item(), f1_score.item(), iou_score.item()
+        
     
 
-    def load_model(self, model_path, output_dir):
+    def work_model(self, model_path, output_dir):
         device = "cpu"
         model.load_state_dict(torch.load("model1.bin"))
         model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.to(device)
-        model.eval()
+        self.test_model(model, output_dir)
         
 
 
