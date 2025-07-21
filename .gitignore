@@ -5,3 +5,4 @@ mask_test/
 mask_train/
 mask_val/
 tiff_to_png/
+output_images/
