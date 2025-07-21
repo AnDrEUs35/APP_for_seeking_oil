@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPushButton, QVBoxLayout, QWidget,
                              QTreeView, QFileDialog, QMessageBox, QTabWidget, QFileSystemModel, QLineEdit)  # QComboBox и QWidget импортирован в другом модуле
-from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect, QByteArray
+from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect
 from PySide6.QtGui import QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 import shutil
 
@@ -501,8 +501,7 @@ class OilApp(QMainWindow):
         self.visualize_widget = PaintWidget()
 
         self.choice_of_models = QComboBox()
-        self.choice_of_models.addItem('Модель 1 (снимки всего мира)')
-        self.choice_of_models.addItem('Модель 2 (снимки Чёрного моря)')
+        self.choice_of_models.addItems(['Модель 1 (снимки всего мира)', 'Модель 2 (снимки Чёрного моря)'])
 
         self.neuro_button = QPushButton('Найти разливы \n нефтепродуктов')
         self.neuro_button.clicked.connect(self.start_neuro)
@@ -550,7 +549,7 @@ class OilApp(QMainWindow):
             self.model.setRootPath(self.dir_path)
             self.tree.setRootIndex(self.model.index(self.dir_path))
             self.tree.show()
-        elif self.dir_path and self.tab_widget.tabText(self.tab_widget.currentIndex()) == "Поиск нефти нейросетью":
+        elif self.dir_path and self.tab_widget.tabText(self.tab_widget.currentIndex()) == "Идентификация нефти":
             self.label2.setText(f"Текущая папка: {self.dir_path}")
             self.model2.setRootPath(self.dir_path)
             self.tree2.setRootIndex(self.model2.index(self.dir_path))
@@ -769,19 +768,22 @@ class OilApp(QMainWindow):
         image_path = self.model2.filePath(index)
         with Image.open(image_path) as img:
             size = img.size
-        try:
-            mask_array = np.array(Image.open(QFileDialog.getOpenFileName(self, 'Укажите путь до маски')[0]).resize(size))
-        except Exception as e:
-            QMessageBox.critical(self, 'Ошибка', f'Что-то пошло не так при открытии маски: {e}')
-            return
+        # try:
+        #     mask_array = np.array(Image.open(QFileDialog.getOpenFileName(self, 'Укажите путь до маски')[0]).resize(size))
+        # except Exception as e:
+        #     QMessageBox.critical(self, 'Ошибка', f'Что-то пошло не так при открытии маски: {e}')
+        #     return
+        mask_array = np.array(Image.open(f'app/preview/mask_{os.path.basename(image_path)}').resize(size))
         overlayed_arr = self.neuro.overlay_mask(image_path, mask_array)
         
         self.visualize_widget.visualize_overlayed_mask(overlayed_arr)
 
 
     def start_neuro(self):
-        models = {1: 'model1.bin',
-                  2: 'model.bin'}
+        shutil.rmtree('app/preview')
+        os.makedirs('app/preview', exist_ok=True)
+        models = {0: 'model1.bin',
+                  1: 'model.bin'}
         index = self.choice_of_models.currentIndex()
         try:
             images_path = self.dir_path
@@ -791,13 +793,14 @@ class OilApp(QMainWindow):
             if not output_dir:
                 return
             out_dict = self.neuro.predict_mask(models[index], images_path)
-            print(out_dict)
             for img_name, mask_arr in out_dict.items():
                 mask = Image.fromarray(mask_arr)
                 mask.save(os.path.join(output_dir, f'mask_{img_name}'))
+                mask.save(f'app/preview/mask_{img_name}')
         except Exception as e:
-            QMessageBox.critcal('Ошибка', f'Что-то пошло не так при определении масок: {e}')
-        QMessageBox.information(self, 'Успех', 'Созданы маски для этих изображений')
+            QMessageBox.critical(self, 'Ошибка', f'Что-то пошло не так при определении масок: {e}')
+        else:
+            QMessageBox.information(self, 'Успех', 'Созданы маски для этих изображений')
 
 
 
