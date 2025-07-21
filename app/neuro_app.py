@@ -347,7 +347,7 @@ class OilApp(QMainWindow):
         super().__init__()
         self.dir_path = None
         
-        self.setWindowTitle('Идентификация нефтепродуктов на спутниковых снимках')
+        self.setWindowTitle('Toolkit for identification & Annotation Oil Spills with AI')
         self.image_changer = ImageChanger()
         self.current_image_path = None # Хранит путь к текущему загруженному изображению
         self.initUI()
@@ -503,8 +503,11 @@ class OilApp(QMainWindow):
         self.choice_of_models = QComboBox()
         self.choice_of_models.addItems(['Модель 1 (снимки всего мира)', 'Модель 2 (снимки Чёрного моря)'])
 
-        self.neuro_button = QPushButton('Найти разливы \n нефтепродуктов')
+        self.neuro_button = QPushButton('Найти разливы нефтепродуктов \n на всех снимках')
         self.neuro_button.clicked.connect(self.start_neuro)
+
+        self.neuro_button2 = QPushButton('Найти разливы нефтепродуктов \n на снимке')
+        self.neuro_button2.clicked.connect(self.start_neuro)
 
         self.overlay_button = QPushButton('Наложение маски')
         self.overlay_button.clicked.connect(self.overlay_mask)
@@ -513,6 +516,7 @@ class OilApp(QMainWindow):
         layV2.addWidget(self.dir_button2)
         layV2.addWidget(self.tree2)
         layV2.addWidget(self.choice_of_models)
+        layV2.addWidget(self.neuro_button2)
         layV2.addWidget(self.neuro_button)
         layV2.addWidget(self.overlay_button)
         
@@ -769,7 +773,7 @@ class OilApp(QMainWindow):
             image_path = self.model2.filePath(index)
             with Image.open(image_path) as img:
                 size = img.size
-            mask_array = np.array(Image.open(QFileDialog.getOpenFileName(self, 'Укажите путь до маски')[0]).resize(size))
+            # mask_array = np.array(Image.open(QFileDialog.getOpenFileName(self, 'Укажите путь до маски')[0]).resize(size))
             mask_array = np.array(Image.open(f'app/preview/mask_{os.path.basename(image_path)}').resize(size))
             overlayed_arr = self.neuro.overlay_mask(image_path, mask_array)
             
@@ -780,19 +784,27 @@ class OilApp(QMainWindow):
 
 
     def start_neuro(self):
-        shutil.rmtree('app/preview')
+        sender = self.sender()
+        if os.path.exists('app/preview'):
+            shutil.rmtree('app/preview')
         os.makedirs('app/preview', exist_ok=True)
         models = {0: 'model1.bin',
                   1: 'model.bin'}
-        index = self.choice_of_models.currentIndex()
-        try:
+        if sender == self.neuro_button:
+            index = self.choice_of_models.currentIndex()
             images_path = self.dir_path
+            snaps_count = 'many'
+        elif sender == self.neuro_button2:
+            index = self.choice_of_models.currentIndex()
+            images_path = self.model2.filePath(self.tree2.currentIndex())
+            snaps_count = 'one'
+        try:
             if images_path == '':
                 return
             output_dir = QFileDialog.getExistingDirectory(self, 'Выберите директорию для сохранения')
             if not output_dir:
                 return
-            out_dict = self.neuro.predict_mask(models[index], images_path)
+            out_dict = self.neuro.predict_mask(models[index], images_path, snaps_count)
             for img_name, mask_arr in out_dict.items():
                 mask = Image.fromarray(mask_arr)
                 mask.save(os.path.join(output_dir, f'mask_{img_name}'))

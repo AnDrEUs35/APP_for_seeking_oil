@@ -150,7 +150,6 @@ class ImageChanger:
 
             with rasterio.open(source_path) as src:
                 band_count = src.count
-                print(band_count, count_bands[0])
                 if band_count == count_bands[0]:
                     band = dlg.selected_band
                 elif band_count == 1:
@@ -252,19 +251,20 @@ class NeuroBackEnd:
             return overlay
         
 
-    def predict_mask(self, model_path, images_dir):
+    def predict_mask(self, model_path, images_path, snaps_count):
         logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(message)s",
         datefmt="%d:%m:%Y %H:%M:%S",
             )
-
+        
         device = "cpu"
-
-        ids = os.listdir(images_dir)
-        images_filepaths = [os.path.join(images_dir, image_id) for image_id in ids]
+        if snaps_count == 'many':
+            ids = os.listdir(images_path)
+            images_filepaths = [os.path.join(images_path, image_id) for image_id in ids]
+        elif snaps_count == 'one':
+            images_filepaths = [images_path]
         input_image_reshape = (128, 128)
-                
         torch.backends.cudnn.benchmark = True
         model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
         model.load_state_dict(torch.load(model_path, map_location=device))
