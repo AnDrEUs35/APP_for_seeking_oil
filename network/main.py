@@ -50,7 +50,7 @@ os.makedirs(output_dir, exist_ok=True)
 # ----------------------------
 # Define the hyperparameters
 # ----------------------------
-epochs_max = 70  # Number of epochs to train the model
+epochs_max = 5  # Number of epochs to train the model
 adam_lr = 2e-4  # Learning rate for the Adam optimizer
 eta_min = 1e-5  # Minimum learning rate for the scheduler
 batch_size = 8  # Batch size for training
@@ -316,4 +316,4 @@ test_loss = test_model(model, output_dir, test_dataloader, loss_fn, device)
 logging.info(f"Test Loss: {test_loss[0]}, IoU Score: {test_loss[3]}, Accuracy: {test_loss[1]}, F1 score: {test_loss[2]}")
 logging.info(f"The output masks are saved in {output_dir}.")
 
-torch.save(model.state_dict(), Path(__file__).parent.parent / "model.bin")
+torch.save(model.state_dict(), Path(__file__).parent.parent / "modellll.bin")
