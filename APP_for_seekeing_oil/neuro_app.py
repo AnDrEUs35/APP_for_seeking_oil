@@ -461,6 +461,8 @@ class OilApp(QMainWindow):
         '''Конец первой вкладки'''
 
 
+
+
         '''Это вторая вкладка'''
         self.label2 = QLabel('Выберите директорию')
         self.label2.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -485,10 +487,14 @@ class OilApp(QMainWindow):
         self.neuro_button = QPushButton('Найти разливы \n нефтепродуктов')
         self.neuro_button.clicked.connect(self.start_neuro)
 
+        self.overlay_button = QPushButton('Наложение маски')
+        self.overlay_button.clicked.connect(self.overlay_mask)
+
 
         layV2.addWidget(self.dir_button2)
         layV2.addWidget(self.tree2)
         layV2.addWidget(self.neuro_button)
+        layV2.addWidget(self.overlay_button)
 
 
         layH2.addLayout(layV2)
@@ -733,12 +739,19 @@ class OilApp(QMainWindow):
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при сохранении маски: {e}")
 
 
-    def overlay_mask(self, mask_array):
+    def overlay_mask(self):
         index = self.tree2.currentIndex()
         if not index.isValid():
             QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
             return
         image_path = self.model2.filePath(index)
+        with Image.open(image_path) as img:
+            size = img.size
+        try:
+            mask_array = np.array(Image.open(QFileDialog.getOpenFileName(self, 'Укажите путь до маски')[0]).resize(size))
+        except Exception as e:
+            QMessageBox.critical(self, 'Ошибка', f'Что-то пошло не так при открытии маски: {e}')
+            return
         output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь для сохранения изображения')
         if not output_path:
             return
@@ -748,16 +761,18 @@ class OilApp(QMainWindow):
 
 
     def start_neuro(self):
-        index = self.tree2.currentIndex()
-        if not index.isValid():
-            QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
+        print(self.dir_path)
+        images_path = self.dir_path
+        if images_path == '':
             return
-        image_path = self.model2.filePath(index)
-        model = self.neuro.load_model_weights('APP_for_seekeing_oil/model1.bin')
-        tensor = self.neuro.img_path_to_tensor(image_path)
-        mask_arr = self.neuro.infer_and_visualize(model, tensor)
-        mask = Image.fromarray(mask_arr)
-        mask.show()
+        output_dir = QFileDialog.getExistingDirectory(self, 'Выберите директорию для сохранения')
+        if not output_dir:
+            return
+        out_dict = self.neuro.predict_mask('model1.bin', images_path)
+        print(out_dict)
+        for img_name, mask_arr in out_dict.items():
+            mask = Image.fromarray(mask_arr)
+            mask.save(os.path.join(output_dir, f'mask_{img_name}'))
 
 
 

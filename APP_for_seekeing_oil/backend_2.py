@@ -7,12 +7,10 @@ import itertools
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QComboBox, QFormLayout, QWidget
 from osgeo import gdal
 import torch
-import matplotlib as plt
 gdal.UseExceptions()
 from model import Model
-from torchvision import transforms
-
-import segmentation_models_pytorch as smp
+from pathlib import Path
+import cv2
 
 
 
@@ -256,96 +254,60 @@ class NeuroBackEnd:
             overlay_path = os.path.join(output_path, f'overlayed_{os.path.basename(image_path)}')
             overlay_img.save(overlay_path, 'TIFF')
             return overlay_path
+        
 
-    def load_model_weights(self, model_path: str, device: str = "cpu") -> torch.nn.Module:
+    def predict_mask(self, model_path, images_dir):
+        logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(message)s",
+        datefmt="%d:%m:%Y %H:%M:%S",
+            )
+
+        device = "cpu"
+
+        ids = os.listdir(images_dir)
+        images_filepaths = [os.path.join(images_dir, image_id) for image_id in ids]
+        input_image_reshape = (128, 128)
+                
+        torch.backends.cudnn.benchmark = True
         model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
         model.load_state_dict(torch.load(model_path, map_location=device))
-        model.to(device)
+        list_with_mask_arrays = self.__get_mask_arr_from_neuro(model, images_filepaths, device, input_image_reshape)
+        return list_with_mask_arrays
+
+
+    def __get_mask_arr_from_neuro(self, model, images_filepaths, device, reshape):
         model.eval()
-        return model
-
-
-    def infer_and_visualize(self, model: torch.nn.Module, image_tensor: torch.Tensor) -> np.ndarray:
+        list_with_mask_arrays = []
+        list_with_img_names = []
+        out_dict = {}
         with torch.no_grad():
-            image_tensor = image_tensor.unsqueeze(0)  # Add batch dim
-            output = model(image_tensor)
-            prob = torch.sigmoid(output.squeeze(0))
-            mask = ((prob > 0.5).float().cpu().numpy().squeeze() * 255).astype(np.uint8)
-            print(mask)
+            for i in range (len(images_filepaths)):
+                image = cv2.imread(images_filepaths[i])
+                image = cv2.resize(image, reshape)
+                image = torch.tensor(image).float().permute(2, 0, 1) / 255.0  
+                mask_arr = self.__img_to_mask(model, image.to(device))
+                output_mask = Image.fromarray(mask_arr)
+                output_mask_arr = np.array(output_mask)
+                list_with_mask_arrays.append(output_mask_arr)
+                list_with_img_names.append(os.path.basename(images_filepaths[i]))
 
-        # Визуализация
-        img_np = image_tensor.squeeze(0).cpu().numpy().transpose(1, 2, 0)
+        for key, value in zip(list_with_img_names, list_with_mask_arrays):
+            out_dict.update({key: value})
+            
+        return out_dict
+            
 
-        return mask
-    
-
-    def img_path_to_tensor(self, img_path):
-        image = Image.open(img_path)
-        transform = transforms.Compose([
-            transforms.PILToTensor()
-        ])
-
-        img_tensor = transform(image)
-        return img_tensor
-
-    # def work_model(self, model_path, output_dir):
-    #     device = "cpu"
-    #     model.load_state_dict(torch.load("model1.bin"))
-    #     model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
-    #     model.load_state_dict(torch.load(model_path, map_location=device))
-    #     model.to(device)
-    #     self.test_model(model, output_dir)
-
-
-
-    # def visualize(self, output_dir, image_filename, **images):
-    #     """PLot images in one row."""
-    #     n = len(images)
-    #     plt.figure(figsize=(16, 5))
-    #     for i, (name, image) in enumerate(images.items()):
-    #         plt.subplot(1, n, i + 1)
-    #         plt.xticks([])
-    #         plt.yticks([])
-    #         plt.title(" ".join(name.split("_")).title())
-    #         plt.imshow(image)
-    #     # plt.savefig(os.path.join(output_dir, image_filename))
-    #     plt.show()
-    #     plt.close()
-
-
-    # def test_model(self, model, output_dir, device):
-    #     model.eval()
-
-    #     with torch.no_grad():
-    #         for batch in tqdm(test_dataloader, desc="Evaluating"):
-    #             images, masks = batch
-    #             images, masks = images.to(device), masks.to(device)
-
-    #             # For BCELoss, apply sigmoid manually before loss
-    #             outputs = model(images)
-    #             prob_outputs = torch.sigmoid(outputs)
-
-    #             for i, output in enumerate(prob_outputs):
-    #                 input_img = images[i].cpu().numpy().transpose(1, 2, 0)
-    #                 output_img = output.squeeze().cpu().numpy()
-                    
-    #                 self.visualize(
-    #                     output_dir,
-    #                     f"output_{i}.png",
-    #                     input_image=input_img,
-    #                     output_mask=output_img,
-    #                     binary_mask=output_img > 0.5,
-    #                 )
-
-
-    #             # pred_mask = (prob_outputs.squeeze(1) > 0.5).long()
+    def __img_to_mask(self, model, image):        
+        output = torch.sigmoid(model(image))
+        return output.squeeze().cpu().numpy() > 0.5
+        
+                
+        
 
 
         
     
-
-
-        
 
 
             
