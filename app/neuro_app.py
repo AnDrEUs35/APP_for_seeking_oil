@@ -120,6 +120,11 @@ class PaintWidget(QWidget):
             print(error_message)
             QMessageBox.critical(self, "Критическая ошибка", error_message)
             return False
+        
+
+    def visualize_overlayed_mask(self, image_path, mask_array):
+        with Image.open(image_path) as img:
+            
 
 
     def set_drawing_enabled(self, enabled: bool):  # Для первой вкладки
@@ -752,12 +757,8 @@ class OilApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, 'Ошибка', f'Что-то пошло не так при открытии маски: {e}')
             return
-        output_path = QFileDialog.getExistingDirectory(self, 'Укажите путь для сохранения изображения')
-        if not output_path:
-            return
-        overlay_path = self.neuro.overlay_mask(image_path, mask_array, output_path)
         
-        self.visualize_widget.load_image(overlay_path)
+        self.visualize_widget.visualize_overlayed_mask(image_path, mask_array)
 
 
     def start_neuro(self):

@@ -302,15 +302,6 @@ class NeuroBackEnd:
         output = torch.sigmoid(model(image))
         return output.squeeze().cpu().numpy() > 0.5
         
-                
-        
-
-
-        
-    
-
-
-            
 
 if __name__ == '__main__':
    pass
