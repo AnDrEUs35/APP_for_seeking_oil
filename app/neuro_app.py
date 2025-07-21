@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import (QApplication, QLabel, QHBoxLayout, QMainWindow, QPushButton, QVBoxLayout, QWidget,
                              QTreeView, QFileDialog, QMessageBox, QTabWidget, QFileSystemModel, QLineEdit)  # QComboBox и QWidget импортирован в другом модуле
-from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect
+from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect, QByteArray
 from PySide6.QtGui import QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 import shutil
 
@@ -122,9 +122,20 @@ class PaintWidget(QWidget):
             return False
         
 
-    def visualize_overlayed_mask(self, image_path, mask_array):
-        with Image.open(image_path) as img:
-            
+    def visualize_overlayed_mask(self, overlayed_arr):
+        overlay_image = Image.fromarray(overlayed_arr.astype(np.uint8))
+        qimage = QImage(
+        overlay_image.tobytes(),
+        overlay_image.width,
+        overlay_image.height,
+        overlay_image.width * 3,
+        QImage.Format.Format_RGB888
+    )
+        self.pixmap = QPixmap.fromImage(qimage)
+        self.scale_factor = 1.0
+        self.pixmap_offset = QPoint()
+        self.clear_contours()
+        self.update()
 
 
     def set_drawing_enabled(self, enabled: bool):  # Для первой вкладки
@@ -489,6 +500,10 @@ class OilApp(QMainWindow):
 
         self.visualize_widget = PaintWidget()
 
+        self.choice_of_models = QComboBox()
+        self.choice_of_models.addItem('Модель 1 (снимки всего мира)')
+        self.choice_of_models.addItem('Модель 2 (снимки Чёрного моря)')
+
         self.neuro_button = QPushButton('Найти разливы \n нефтепродуктов')
         self.neuro_button.clicked.connect(self.start_neuro)
 
@@ -498,12 +513,14 @@ class OilApp(QMainWindow):
 
         layV2.addWidget(self.dir_button2)
         layV2.addWidget(self.tree2)
+        layV2.addWidget(self.choice_of_models)
         layV2.addWidget(self.neuro_button)
         layV2.addWidget(self.overlay_button)
+        
 
 
         layH2.addLayout(layV2)
-        layH2.addWidget(self.visualize_widget)
+        layH2.addWidget(self.visualize_widget, 1)
 
         main_lay2.addWidget(self.label2)
         main_lay2.addLayout(layH2)
@@ -519,7 +536,7 @@ class OilApp(QMainWindow):
         tab2.setLayout(main_lay2)
 
         self.tab_widget.addTab(tab1, "Обработка снимков")
-        self.tab_widget.addTab(tab2, "Поиск нефти нейросетью")
+        self.tab_widget.addTab(tab2, "Идентификация нефти")
 
         
         self.setCentralWidget(self.tab_widget)
@@ -757,23 +774,30 @@ class OilApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, 'Ошибка', f'Что-то пошло не так при открытии маски: {e}')
             return
+        overlayed_arr = self.neuro.overlay_mask(image_path, mask_array)
         
-        self.visualize_widget.visualize_overlayed_mask(image_path, mask_array)
+        self.visualize_widget.visualize_overlayed_mask(overlayed_arr)
 
 
     def start_neuro(self):
-        print(self.dir_path)
-        images_path = self.dir_path
-        if images_path == '':
-            return
-        output_dir = QFileDialog.getExistingDirectory(self, 'Выберите директорию для сохранения')
-        if not output_dir:
-            return
-        out_dict = self.neuro.predict_mask('model1.bin', images_path)
-        print(out_dict)
-        for img_name, mask_arr in out_dict.items():
-            mask = Image.fromarray(mask_arr)
-            mask.save(os.path.join(output_dir, f'mask_{img_name}'))
+        models = {1: 'model1.bin',
+                  2: 'model.bin'}
+        index = self.choice_of_models.currentIndex()
+        try:
+            images_path = self.dir_path
+            if images_path == '':
+                return
+            output_dir = QFileDialog.getExistingDirectory(self, 'Выберите директорию для сохранения')
+            if not output_dir:
+                return
+            out_dict = self.neuro.predict_mask(models[index], images_path)
+            print(out_dict)
+            for img_name, mask_arr in out_dict.items():
+                mask = Image.fromarray(mask_arr)
+                mask.save(os.path.join(output_dir, f'mask_{img_name}'))
+        except Exception as e:
+            QMessageBox.critcal('Ошибка', f'Что-то пошло не так при определении масок: {e}')
+        QMessageBox.information(self, 'Успех', 'Созданы маски для этих изображений')
 
 
 

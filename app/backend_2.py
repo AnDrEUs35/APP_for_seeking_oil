@@ -243,17 +243,13 @@ class ImageChanger:
 
 class NeuroBackEnd:
 
-    def overlay_mask(self, image_path, mask_arr, output_path):
+    def overlay_mask(self, image_path, mask_arr):
         with Image.open(image_path).convert('RGB') as img:
             img_arr = np.array(img)
 
             overlay = img_arr.copy()
             overlay[mask_arr > 0] = (255, 0, 0)
-
-            overlay_img = Image.fromarray(overlay).convert('RGB')
-            overlay_path = os.path.join(output_path, f'overlayed_{os.path.basename(image_path)}')
-            overlay_img.save(overlay_path, 'TIFF')
-            return overlay_path
+            return overlay
         
 
     def predict_mask(self, model_path, images_dir):

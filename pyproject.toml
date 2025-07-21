@@ -15,6 +15,7 @@ dependencies = [
     "rasterio>=1.4.3",
     "segmentation-models-pytorch>=0.5.0",
     "torch>=2.7.1",
+    "typer>=0.16.0",
 ]
 
 [tool.uv.sources]
