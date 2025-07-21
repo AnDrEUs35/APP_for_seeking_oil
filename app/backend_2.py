@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox, QComboBox, QFormLayout,
 from osgeo import gdal
 import torch
 gdal.UseExceptions()
-from model import Model
+from app.model import Model
 from pathlib import Path
 import cv2
 

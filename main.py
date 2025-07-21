@@ -29,7 +29,7 @@ def img_to_mask(model, image):
 model = Model("Unet", "resnet34", in_channels=3, out_classes=1)
 app = typer.Typer()
 
-@app.command
+@app.command()
 def gui():
     app_main()
 

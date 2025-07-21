@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 
 from tqdm import tqdm
 from pathlib import Path
-from dataset import Dataset
-from model import Model
+from network.dataset import Dataset
+from network.model import Model
 
 import segmentation_models_pytorch as smp
 

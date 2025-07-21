@@ -18,4 +18,4 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-gdal = { path = "gdal-3.11.1-cp313-cp313-win_amd64.whl" }
+gdal = { path = "gdal-3.11.1-cp313-cp313-win_amd64.whl" } # windows only

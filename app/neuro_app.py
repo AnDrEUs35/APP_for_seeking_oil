@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, QPoint, QModelIndex, QRect
 from PySide6.QtGui import QPainter, QPixmap, QMouseEvent, QWheelEvent, QPen, QColor, QBrush, QKeySequence, QShortcut, QImage
 import shutil
 
-from backend_2 import *
+from app.backend_2 import *
 
 class PaintWidget(QWidget):
     
