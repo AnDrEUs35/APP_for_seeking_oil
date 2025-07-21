@@ -761,22 +761,22 @@ class OilApp(QMainWindow):
 
 
     def overlay_mask(self):
-        index = self.tree2.currentIndex()
-        if not index.isValid():
-            QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
+        try:
+            index = self.tree2.currentIndex()
+            if not index.isValid():
+                QMessageBox.warning(self, "Ошибка", "Выберите сперва файл снимка.")
+                return
+            image_path = self.model2.filePath(index)
+            with Image.open(image_path) as img:
+                size = img.size
+            mask_array = np.array(Image.open(QFileDialog.getOpenFileName(self, 'Укажите путь до маски')[0]).resize(size))
+            mask_array = np.array(Image.open(f'app/preview/mask_{os.path.basename(image_path)}').resize(size))
+            overlayed_arr = self.neuro.overlay_mask(image_path, mask_array)
+            
+            self.visualize_widget.visualize_overlayed_mask(overlayed_arr)
+        except Exception as e:
+            QMessageBox.critical(self, 'Ошибка', f'Что-то пошло не так: {e}')
             return
-        image_path = self.model2.filePath(index)
-        with Image.open(image_path) as img:
-            size = img.size
-        # try:
-        #     mask_array = np.array(Image.open(QFileDialog.getOpenFileName(self, 'Укажите путь до маски')[0]).resize(size))
-        # except Exception as e:
-        #     QMessageBox.critical(self, 'Ошибка', f'Что-то пошло не так при открытии маски: {e}')
-        #     return
-        mask_array = np.array(Image.open(f'app/preview/mask_{os.path.basename(image_path)}').resize(size))
-        overlayed_arr = self.neuro.overlay_mask(image_path, mask_array)
-        
-        self.visualize_widget.visualize_overlayed_mask(overlayed_arr)
 
 
     def start_neuro(self):

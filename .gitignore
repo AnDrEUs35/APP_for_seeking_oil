@@ -8,3 +8,4 @@ tiff_to_png/
 output_images/
 app/preview
 __pycache__
+app/__pycache__
