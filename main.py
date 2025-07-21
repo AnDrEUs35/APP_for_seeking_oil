@@ -6,8 +6,9 @@ from network.model import Model
 from PIL import Image
 from app.neuro_app import main as app_main
 import typer
+import subprocess
 
-device = "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 RESHAPE = (128, 128)
 
 def test_model(model, output_dir, arr, device, reshape):
@@ -34,8 +35,9 @@ def gui():
     app_main()
 
 @app.command()
-def train(epochs: int = 70, batch_size: int = 8, reshape = (128, 128)):
-    ...
+def train():
+    subprocess.run(["python", "network/main.py"])
+    
 
 @app.command()
 def run(model_file: str, in_dir: str, out_dir: str = "out"):
