@@ -788,8 +788,8 @@ class OilApp(QMainWindow):
         if os.path.exists('app/preview'):
             shutil.rmtree('app/preview')
         os.makedirs('app/preview', exist_ok=True)
-        models = {0: 'model1.bin',
-                  1: 'model.bin'}
+        models = {0: 'global_model.bin',
+                  1: 'black_sea_model.bin'}
         if sender == self.neuro_button:
             index = self.choice_of_models.currentIndex()
             images_path = self.dir_path
