@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/1016023671.svg)](https://doi.org/10.5281/zenodo.16307596)
+
 # 1. Организация файлов
 
 ```
